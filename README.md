@@ -5,12 +5,13 @@ A modern, fast, and cross-platform desktop installer and launcher for [**Dawn**]
 
 ## Overview
 
-This installer simplifies the entire process of installing, managing, and playing Dawn, it automates game file verification, official depot downloads from Steam and mod deployment.
+This installer simplifies the entire process of installing, managing, and playing Dawn, it automates game file verification, official depot downloads from Steam, mod deployment, and Proton configuration on Linux and Steam Deck.
 
 ---
 
 ## Features
 
+- **Cross-Platform Support**: Built natively for Windows 10/11 and Linux / SteamOS (Steam Deck).
 - **Automated Game Detection**: Automatically scans standard Steam libraries to locate your Destiny 2 folder and validates build compatibility.
 - **Integrated Steam Depot Downloader**:
   - Securely authenticates with Steam via **Steam Mobile QR code** or account credentials.
@@ -18,6 +19,7 @@ This installer simplifies the entire process of installing, managing, and playin
 - **One-Click Dawn Installation**: Deploys the latest Dawn runtime, proxy libraries, default profiles, vendor configs, and launch scripts in seconds.
 - **Automatic Version Updates**: Checks GitHub Releases on launch and lets you update your Dawn mod with a single click while preserving your custom configs.
 - **Multi-Language Support**: Choose your preferred in-game audio and text language from 13 supported languages.
+- **Native Steam Deck / Linux Gaming**: Automatically resolves Proton and Steam compatibility data paths to run Dawn seamlessly on SteamOS.
 - **Clean One-Click Uninstaller**: Safely restores your genuine original `steam_api64.dll` from backup and purges all Dawn mod files and caches when you want to return to vanilla.
 - **Diagnostics & Tools**: Built-in cache clearing.
 
@@ -29,7 +31,8 @@ This installer simplifies the entire process of installing, managing, and playin
 
 Head over to the [Releases](https://github.com/echo-matt/Dawn-installer/releases) page to download the latest version for your platform:
 
-- **Windows**: Download `DAWN-Setup-v1.1.0.exe` (installer), `DAWN-v1.1.0.msi`, or standalone `DAWN-v1.1.0-Portable.zip`.
+- **Windows**: Download `DAWN-Setup-v1.0.1.exe` (installer), `DAWN-v1.0.1.msi`, or standalone `DAWN-v1.0.1-Portable.zip`.
+- **Steam Deck & Linux**: Download `DAWN-v1.0.1.AppImage`, `DAWN_1.0.1_amd64.deb`, or `DAWN-v1.0.1-linux-x64.tar.gz`.
 
 ### 2. Quick Setup
 
@@ -64,6 +67,7 @@ Click the arrow next to the main action button to access installer tools:
 
 - **Operating System**:
   - Windows 10 or Windows 11 (64-bit)
+  - Linux (Ubuntu 20.04+, Arch Linux, Fedora, SteamOS 3.0+ / Steam Deck)
 - **Steam Account**: A free Steam account that owns Destiny 2 (free-to-play) is required for downloading game depots.
 - **Storage**: ~105 GB of available disk space for game assets and mod files.
 
