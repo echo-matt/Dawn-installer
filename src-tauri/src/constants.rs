@@ -6,9 +6,7 @@ pub const GAME_EXECUTABLE: &str = "destiny2.exe";
 /// Expected Destiny 2 build for Dawn: Build 86657 (Season of Arrivals, Aug 2020)
 pub const EXPECTED_BUILD_ID: u32 = 86657;
 pub const EXPECTED_EXE_SIZE: u64 = 122_984_224; // Exact size of build 86657 destiny2.exe in manifest 7180122903232116872
-#[cfg(windows)]
 pub const EXPECTED_BUILD_STRING: &str = "86657";
-#[cfg(windows)]
 pub const EXPECTED_FILE_VERSION: &str = "86657.20.08.23.1800.d2_rc";
 
 pub const BASE_DEPOT_ID: u64 = 1085661;

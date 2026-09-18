@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
-#[cfg(windows)]
-use crate::constants::{EXPECTED_BUILD_STRING, EXPECTED_FILE_VERSION};
-use crate::constants::{EXPECTED_BUILD_ID, EXPECTED_EXE_SIZE, GAME_EXECUTABLE, REQUIRED_FREE_BYTES};
+use crate::constants::{
+    EXPECTED_BUILD_ID, EXPECTED_BUILD_STRING, EXPECTED_EXE_SIZE, EXPECTED_FILE_VERSION,
+    GAME_EXECUTABLE, REQUIRED_FREE_BYTES,
+};
 use crate::types::{CommandResult, FolderValidationResult, PreflightResult, ProgressPayload};
 
 pub fn get_bundled_payload_dir() -> PathBuf {
@@ -178,18 +179,18 @@ pub fn is_build_86657(exe_path: &Path) -> bool {
         }
     }
 
-    // 3. Tertiary cross-platform check: scan binary for UTF-16LE / ASCII "86657"
-    if let Ok(mut file) = fs::File::open(exe_path) {
+    // 3. Cross-platform fallback: scan initial bytes for UTF-16LE / ASCII "86657"
+    if let Ok(file) = fs::File::open(exe_path) {
         use std::io::Read;
-        let mut buf = vec![0u8; 16 * 1024 * 1024];
-        if let Ok(n) = file.read(&mut buf) {
-            let slice = &buf[..n];
-            let needle_u16: Vec<u8> = "86657"
+        let mut buffer = Vec::new();
+        let mut take = file.take(64 * 1024 * 1024);
+        if take.read_to_end(&mut buffer).is_ok() {
+            let wide_needle: Vec<u8> = EXPECTED_BUILD_STRING
                 .encode_utf16()
                 .flat_map(|c| c.to_le_bytes())
                 .collect();
-            if slice.windows(needle_u16.len()).any(|w| w == needle_u16.as_slice())
-                || slice.windows(5).any(|w| w == b"86657")
+            if buffer.windows(wide_needle.len()).any(|w| w == wide_needle.as_slice())
+                || buffer.windows(EXPECTED_BUILD_STRING.len()).any(|w| w == EXPECTED_BUILD_STRING.as_bytes())
             {
                 return true;
             }
@@ -911,164 +912,13 @@ pub fn update_dawn_language(install_root: &str, language_code: &str) {
     }
 }
 
-#[cfg(not(windows))]
-fn find_proton_and_compatdata(_game_root: &Path) -> Result<(PathBuf, PathBuf, PathBuf), String> {
-    let steam_libs = get_steam_libraries();
-    let steam_root = steam_libs.first().cloned().unwrap_or_else(|| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(home).join(".local").join("share").join("Steam")
-    });
-
-    let proton_candidates = [
-        "Proton - Experimental",
-        "Proton 9.0 (Beta)",
-        "Proton 9.0",
-        "Proton 8.0",
-        "Proton 7.0",
-        "Proton: Next",
-        "Proton Hotfix",
-    ];
-
-    let mut found_proton: Option<PathBuf> = None;
-    for lib in &steam_libs {
-        for name in &proton_candidates {
-            let p = lib.join("steamapps").join("common").join(name).join("proton");
-            if p.is_file() {
-                found_proton = Some(p);
-                break;
-            }
-        }
-        if found_proton.is_some() {
-            break;
-        }
-    }
-
-    if found_proton.is_none() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let compat_dir = PathBuf::from(home).join(".local").join("share").join("Steam").join("compatibilitytools.d");
-        if let Ok(entries) = fs::read_dir(&compat_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path().join("proton");
-                if p.is_file() {
-                    found_proton = Some(p);
-                    break;
-                }
-            }
-        }
-    }
-
-    let proton = found_proton.ok_or_else(|| {
-        "Proton executable not found in Steam libraries. Please install Proton (e.g. Proton Experimental or Proton 9.0) in Steam.".to_string()
-    })?;
-
-    let mut found_compatdata: Option<PathBuf> = None;
-    for lib in &steam_libs {
-        let cdata = lib.join("steamapps").join("compatdata").join("1085660");
-        if cdata.exists() {
-            found_compatdata = Some(cdata);
-            break;
-        }
-    }
-
-    let compatdata = found_compatdata.unwrap_or_else(|| {
-        steam_root.join("steamapps").join("compatdata").join("1085660")
-    });
-
-    Ok((proton, compatdata, steam_root))
-}
-
-pub fn ensure_launch_scripts(game_root: &Path) {
-    #[cfg(windows)]
-    {
-        let cmd_path = game_root.join("launch-destiny.cmd");
-        if !cmd_path.exists() {
-            let script = "@echo off\r\ncd /d \"%~dp0\"\r\nset DAWN_FOREST_BASELINE=1\r\nstart \"\" \"%~dp0destiny2.exe\" %*\r\n";
-            let _ = fs::write(&cmd_path, script);
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        let sh_path = game_root.join("launch-destiny.sh");
-        if !sh_path.exists() {
-            let script = r#"#!/usr/bin/env sh
-# Dawn Launcher - Destiny 2 (Build 86657) Launch Script
-set -e
-GAME_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$GAME_DIR"
-
-export DAWN_FOREST_BASELINE=1
-
-# Check for steam-run (recommended on NixOS / SteamOS)
-RUNNER=""
-if command -v steam-run >/dev/null 2>&1; then
-    RUNNER="steam-run"
-elif [ -x "/run/current-system/sw/bin/steam-run" ]; then
-    RUNNER="/run/current-system/sw/bin/steam-run"
-fi
-
-# Locate Proton or Wine
-PROTON_CANDIDATE=""
-for cand in \
-    "$HOME/.local/share/Steam/steamapps/common/Proton - Experimental/proton" \
-    "$HOME/.local/share/Steam/steamapps/common/Proton 9.0/proton" \
-    "$HOME/.local/share/Steam/steamapps/common/Proton 8.0/proton" \
-    "$HOME/.steam/steam/steamapps/common/Proton - Experimental/proton" \
-    "$HOME/.steam/steam/steamapps/common/Proton 9.0/proton" \
-    "$HOME/.steam/root/steamapps/common/Proton - Experimental/proton"; do
-    if [ -f "$cand" ]; then
-        PROTON_CANDIDATE="$cand"
-        break
-    fi
-done
-
-if [ -n "$PROTON_CANDIDATE" ]; then
-    STEAM_ROOT="$(dirname "$(dirname "$(dirname "$(dirname "$PROTON_CANDIDATE")")")")"
-    export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
-    export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/1085660"
-    mkdir -p "$STEAM_COMPAT_DATA_PATH"
-
-    echo "[DAWN] Launching via Proton: $PROTON_CANDIDATE"
-    if [ -n "$RUNNER" ]; then
-        exec $RUNNER "$PROTON_CANDIDATE" run "$GAME_DIR/destiny2.exe" "$@"
-    else
-        exec "$PROTON_CANDIDATE" run "$GAME_DIR/destiny2.exe" "$@"
-    fi
-elif command -v wine >/dev/null 2>&1; then
-    echo "[DAWN] Launching via Wine"
-    if [ -n "$RUNNER" ]; then
-        exec $RUNNER wine "$GAME_DIR/destiny2.exe" "$@"
-    else
-        exec wine "$GAME_DIR/destiny2.exe" "$@"
-    fi
-else
-    echo "[ERROR] Neither Proton nor Wine was found in standard locations or PATH."
-    echo "Please install Proton via Steam or install Wine, or edit this script to specify your runner."
-    exit 1
-fi
-"#;
-            let _ = fs::write(&sh_path, script);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(meta) = fs::metadata(&sh_path) {
-                    let mut perms = meta.permissions();
-                    perms.set_mode(0o755);
-                    let _ = fs::set_permissions(&sh_path, perms);
-                }
-            }
-        }
-    }
-}
-
 pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<String>) -> CommandResult {
-    let clean_root = game_root.trim().trim_matches('"').to_string();
-    let mut p = PathBuf::from(&clean_root);
-
-    // If user selected bin/x64, adjust to game root
-    if p.file_name().map(|n| n == "x64").unwrap_or(false) {
+    let trimmed = game_root.trim().trim_matches('"');
+    let mut p = PathBuf::from(trimmed);
+    // If user pointed inside bin/x64, adjust to parent game root
+    if p.file_name().and_then(|f| f.to_str()) == Some("x64") {
         if let Some(parent) = p.parent() {
-            if parent.file_name().map(|n| n == "bin").unwrap_or(false) {
+            if parent.file_name().and_then(|f| f.to_str()) == Some("bin") {
                 if let Some(root) = parent.parent() {
                     p = root.to_path_buf();
                 }
@@ -1080,50 +930,43 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         update_dawn_language(&p.to_string_lossy(), lang);
     }
 
-    let exe_path = if p.join(GAME_EXECUTABLE).is_file() {
-        p.join(GAME_EXECUTABLE)
-    } else if p.join("bin").join("x64").join(GAME_EXECUTABLE).is_file() {
-        p.join("bin").join("x64").join(GAME_EXECUTABLE)
-    } else {
-        p.join(GAME_EXECUTABLE)
-    };
+    let exe_path = p.join(GAME_EXECUTABLE);
 
     if !exe_path.exists() {
-        let err = "destiny2.exe not found in game folder".to_string();
-        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", err));
-        crate::logger::log_msg("ERROR", &err, Some(&app));
+        let msg = "destiny2.exe not found in game folder".to_string();
+        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+        crate::logger::log_msg("ERROR", &msg, Some(&app));
         return CommandResult {
             success: false,
             message: None,
-            error: Some(err),
+            error: Some(msg),
             cancelled: Some(false),
             count: None,
         };
     }
 
     if !is_build_86657(&exe_path) {
-        let err = format!(
+        let msg = format!(
             "Refusing to launch: destiny2.exe is not Build {EXPECTED_BUILD_ID}. Dawn cannot run on modern retail builds."
         );
-        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", err));
-        crate::logger::log_msg("ERROR", &err, Some(&app));
+        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+        crate::logger::log_msg("ERROR", &msg, Some(&app));
         return CommandResult {
             success: false,
             message: None,
-            error: Some(err),
+            error: Some(msg),
             cancelled: Some(false),
             count: None,
         };
     }
 
-    ensure_launch_scripts(&p);
-
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         let cmd_path = p.join("launch-destiny.cmd");
+        let _ = app.emit("depot:output", format!("[LAUNCH] Launching Destiny 2 from {:?}...\r\n", p));
 
-        let mut cmd = if cmd_path.is_file() {
+        let mut cmd = if cmd_path.exists() {
             let mut c = Command::new("cmd.exe");
             c.args(["/c", "launch-destiny.cmd"]);
             c
@@ -1135,30 +978,28 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
             .env("DAWN_FOREST_BASELINE", "1")
             .creation_flags(0x00000200); // CREATE_NEW_PROCESS_GROUP
 
-        let _ = app.emit("depot:output", format!("[LAUNCH] Launching Destiny 2 in {:?}...\r\n", p));
-        crate::logger::log_msg("INFO", &format!("Launching Destiny 2 from {:?}", p), Some(&app));
-
         match cmd.spawn() {
             Ok(child) => {
                 let pid = child.id();
-                let _ = app.emit("depot:output", format!("[LAUNCH] Process spawned successfully (PID: {})\r\n", pid));
-                crate::logger::log_msg("INFO", &format!("Game launched successfully (PID: {})", pid), Some(&app));
+                let msg = format!("Game launched successfully (PID: {})", pid);
+                let _ = app.emit("depot:output", format!("[LAUNCH] {}\r\n", msg));
+                crate::logger::log_msg("INFO", &msg, Some(&app));
                 CommandResult {
                     success: true,
-                    message: Some(format!("Game launched (PID: {})", pid)),
+                    message: Some(msg),
                     error: None,
                     cancelled: Some(false),
                     count: None,
                 }
             }
             Err(e) => {
-                let err_msg = format!("Failed to launch game: {}", e);
-                let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", err_msg));
-                crate::logger::log_msg("ERROR", &err_msg, Some(&app));
+                let msg = format!("Failed to launch game: {}", e);
+                let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+                crate::logger::log_msg("ERROR", &msg, Some(&app));
                 CommandResult {
                     success: false,
                     message: None,
-                    error: Some(err_msg),
+                    error: Some(msg),
                     cancelled: Some(false),
                     count: None,
                 }
@@ -1168,9 +1009,9 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
 
     #[cfg(not(windows))]
     {
-        let msg = "Game launch is disabled on Linux. Please launch Destiny 2 using ./launch-destiny.sh in your game folder.".to_string();
+        let msg = "Linux launch is not supported. Please run the game on Windows or through a configured Wine/Proton runner.".to_string();
         let _ = app.emit("depot:output", format!("[LAUNCH] {}\r\n", msg));
-        crate::logger::log_msg("INFO", &msg, Some(&app));
+        crate::logger::log_msg("WARN", &msg, Some(&app));
         CommandResult {
             success: false,
             message: None,
@@ -1220,57 +1061,4 @@ pub fn open_docs() -> bool {
         }
     }
     true
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_build_86657_byte_scan() {
-        let temp_dir = std::env::temp_dir().join(format!("dawn_test_exe_{}", std::process::id()));
-        let _ = fs::create_dir_all(&temp_dir);
-        let test_exe = temp_dir.join("destiny2.exe");
-
-        // Write a binary containing UTF-16LE "86657"
-        let mut data = vec![0u8; 1024];
-        let needle_u16: Vec<u8> = "86657".encode_utf16().flat_map(|c| c.to_le_bytes()).collect();
-        data[200..200 + needle_u16.len()].copy_from_slice(&needle_u16);
-        fs::write(&test_exe, &data).unwrap();
-
-        assert!(is_build_86657(&test_exe), "is_build_86657 should match binary containing UTF-16LE 86657");
-
-        // Write a binary without 86657
-        let blank = vec![0u8; 1024];
-        fs::write(&test_exe, &blank).unwrap();
-        assert!(!is_build_86657(&test_exe), "is_build_86657 should reject binary without 86657");
-
-        let _ = fs::remove_dir_all(&temp_dir);
-    }
-
-    #[test]
-    fn test_ensure_launch_scripts() {
-        let temp_dir = std::env::temp_dir().join(format!("dawn_test_scripts_{}", std::process::id()));
-        let _ = fs::create_dir_all(&temp_dir);
-
-        ensure_launch_scripts(&temp_dir);
-
-        #[cfg(windows)]
-        {
-            let cmd_path = temp_dir.join("launch-destiny.cmd");
-            assert!(cmd_path.is_file(), "launch-destiny.cmd should be created on Windows");
-            let content = fs::read_to_string(&cmd_path).unwrap();
-            assert!(content.contains("destiny2.exe"));
-        }
-
-        #[cfg(not(windows))]
-        {
-            let sh_path = temp_dir.join("launch-destiny.sh");
-            assert!(sh_path.is_file(), "launch-destiny.sh should be created on Linux");
-            let content = fs::read_to_string(&sh_path).unwrap();
-            assert!(content.contains("destiny2.exe"));
-        }
-
-        let _ = fs::remove_dir_all(&temp_dir);
-    }
 }

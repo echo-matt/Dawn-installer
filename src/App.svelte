@@ -11,8 +11,11 @@
   import SteamGuardModal from './components/SteamGuardModal.svelte';
   import DebugConsole from './components/DebugConsole.svelte';
   import ConfirmUninstallModal from './components/ConfirmUninstallModal.svelte';
+  import LinuxLaunchModal from './components/LinuxLaunchModal.svelte';
 
   // App State
+  let isLinux = $state(false);
+  let isLinuxLaunchModalOpen = $state(false);
   let selectedFolder = $state('');
   let isUninstallModalOpen = $state(false);
   let selectedLanguage = $state('english');
@@ -23,7 +26,6 @@
   let dawnVersion = $state(null);
   let latestDawnVersion = $state(null);
   let isOperationRunning = $state(false);
-  let isLinux = $state(false);
 
   // Progress Card State
   let progressVisible = $state(false);
@@ -94,9 +96,7 @@
           ? 'Install Dawn'
           : isDawnUpdateAvailable
             ? 'UPDATE'
-            : isLinux
-              ? 'Update Dawn'
-              : 'Launch Game'
+            : 'Launch Game'
   );
 
   async function checkFolderStatus(folderPath) {
@@ -129,8 +129,6 @@
       if (preflight.has_dawn) {
         if (isDawnUpdateAvailable) {
           folderTitle = `${folderPath} — Dawn mod update available (v${dawnVersion || '?'} -> v${latestDawnVersion})`;
-        } else if (isLinux) {
-          folderTitle = `${folderPath} — Destiny 2 + Dawn ${dawnVersion ? 'v' + dawnVersion : ''} ready (run ./launch-destiny.sh)`;
         } else {
           folderTitle = `${folderPath} — Destiny 2 + Dawn ${dawnVersion ? 'v' + dawnVersion : ''} ready`;
         }
@@ -166,7 +164,7 @@
 
   async function launchGame() {
     if (isLinux) {
-      showToast('On Linux, please launch Destiny 2 using ./launch-destiny.sh in your game folder.', 5000);
+      isLinuxLaunchModalOpen = true;
       return;
     }
     showToast('Launching Destiny 2...');
@@ -226,8 +224,13 @@
     }
 
     if (hasGameInstalled) {
-      if (!hasDawnInstalled || isDawnUpdateAvailable || isLinux) {
+      if (!hasDawnInstalled || isDawnUpdateAvailable) {
         await runDirectDawnInstall();
+        return;
+      }
+
+      if (isLinux) {
+        isLinuxLaunchModalOpen = true;
         return;
       }
 
@@ -450,13 +453,11 @@
   onMount(async () => {
     // 0. Detect OS platform
     try {
-      const platform = await api.getPlatform();
-      isLinux = platform === 'linux';
-    } catch (_) {
-      isLinux = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('linux');
-    }
+      const plat = await api.getPlatform();
+      isLinux = plat === 'linux';
+    } catch (_) {}
 
-    // 0.1. Fetch latest Dawn release version for update comparison
+    // 0.1 Fetch latest Dawn release version for update comparison
     try {
       const ver = await api.getLatestDawnVersion();
       if (ver) {
@@ -578,8 +579,9 @@
       {selectedLanguage}
       {installButtonText}
       {isOperationRunning}
-      {isLinux}
       isUpdateAvailable={isDawnUpdateAvailable}
+      {isLinux}
+      onLinuxLaunchAttempt={() => (isLinuxLaunchModalOpen = true)}
       onSelectFolder={handleSelectFolder}
       onLanguageChange={handleLanguageChange}
       onInstall={handleMainAction}
@@ -632,5 +634,11 @@
     gameFolder={selectedFolder}
     onClose={() => (isUninstallModalOpen = false)}
     onConfirm={handleConfirmUninstall}
+  />
+
+  <!-- Linux Launch Unsupported Modal -->
+  <LinuxLaunchModal
+    isOpen={isLinuxLaunchModalOpen}
+    onClose={() => (isLinuxLaunchModalOpen = false)}
   />
 </div>

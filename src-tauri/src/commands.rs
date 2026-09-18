@@ -99,13 +99,23 @@ pub fn clear_cache(game_root: String) -> CommandResult {
 }
 
 #[tauri::command]
-pub fn get_platform() -> String {
-    #[cfg(windows)]
-    { "windows".to_string() }
+pub fn get_platform() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "windows"
+    }
     #[cfg(target_os = "linux")]
-    { "linux".to_string() }
+    {
+        "linux"
+    }
     #[cfg(target_os = "macos")]
-    { "macos".to_string() }
+    {
+        "macos"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+    {
+        "unknown"
+    }
 }
 
 #[tauri::command]

@@ -6,7 +6,6 @@
     selectedLanguage = 'english',
     installButtonText = 'Install',
     isOperationRunning = false,
-    isLinux = false,
     onSelectFolder = () => {},
     onLanguageChange = () => {},
     onInstall = () => {},
@@ -18,7 +17,9 @@
     onUpdateDawn = () => {},
     onUninstallDawn = () => {},
     isUpdateAvailable = false,
-    onLaunchAnyway = () => {}
+    onLaunchAnyway = () => {},
+    isLinux = false,
+    onLinuxLaunchAttempt = () => {}
   } = $props();
 
   let isMenuOpen = $state(false);
@@ -41,6 +42,10 @@
   function handleMainAction() {
     if (isOperationRunning) return;
     closeMenu();
+    if (isLinux && installButtonText === 'Launch Game') {
+      onLinuxLaunchAttempt();
+      return;
+    }
     onInstall();
   }
 
@@ -109,7 +114,13 @@
 
     <!-- 3. Crisp White Split Install Button & Options Menu -->
     <div class="button-wrapper">
-      <div class="split-button" class:is-update={isUpdateAvailable} class:disabled={isOperationRunning} id="split-button-container">
+      <div
+        class="split-button"
+        class:is-update={isUpdateAvailable}
+        class:is-launch-disabled={isLinux && installButtonText === 'Launch Game'}
+        class:disabled={isOperationRunning}
+        id="split-button-container"
+      >
         <button
           class="btn-main"
           id="install-main-btn"
@@ -143,8 +154,8 @@
 
       <!-- Popover Menu -->
       <div class="popover-menu" class:active={isMenuOpen} class:open={isMenuOpen} id="install-menu">
-        {#if isUpdateAvailable && !isLinux}
-          <button type="button" class="menu-item" id="opt-launch-anyway" onclick={() => { closeMenu(); onLaunchAnyway(); }}>
+        {#if isUpdateAvailable}
+          <button type="button" class="menu-item" id="opt-launch-anyway" onclick={() => { closeMenu(); if (isLinux) { onLinuxLaunchAttempt(); } else { onLaunchAnyway(); } }}>
             <span>Launch Game (Skip Update)</span>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
           </button>

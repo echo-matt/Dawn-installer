@@ -359,6 +359,31 @@ html, body {
   transform: translateY(1px);
 }
 
+.split-button.is-launch-disabled {
+  background: rgba(148, 163, 184, 0.22) !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  box-shadow: none !important;
+}
+
+.split-button.is-launch-disabled:hover {
+  background: rgba(148, 163, 184, 0.28) !important;
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+.split-button.is-launch-disabled .btn-main {
+  color: rgba(226, 232, 240, 0.5) !important;
+  cursor: pointer !important;
+}
+
+.split-button.is-launch-disabled .btn-divider {
+  background: rgba(148, 163, 184, 0.2) !important;
+}
+
+.split-button.is-launch-disabled .btn-arrow {
+  color: rgba(226, 232, 240, 0.5) !important;
+}
+
 .btn-main {
   background: transparent;
   border: none;

@@ -14,13 +14,6 @@ export const api = {
     return 'C:\\Games\\Destiny 2';
   },
 
-  async getPlatform() {
-    if (isTauri) {
-      return await invoke('get_platform');
-    }
-    return typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('linux') ? 'linux' : 'windows';
-  },
-
   async getLatestDawnVersion() {
     if (isTauri) {
       return await invoke('get_latest_dawn_version');
@@ -147,6 +140,19 @@ export const api = {
       return await invoke('launch_game', { gameRoot, languageCode });
     }
     return { success: true, message: 'Game launched' };
+  },
+
+  async getPlatform() {
+    if (isTauri) {
+      try {
+        return await invoke('get_platform');
+      } catch (_) {}
+    }
+    const ua = (typeof navigator !== 'undefined' ? (navigator.userAgent || navigator.platform || '') : '').toLowerCase();
+    if (ua.includes('linux')) return 'linux';
+    if (ua.includes('win')) return 'windows';
+    if (ua.includes('mac')) return 'macos';
+    return 'unknown';
   },
 
   async openFolder(targetPath) {
