@@ -1,0 +1,63 @@
+DAWN RELEASE - INSTALL OR UPDATE
+
+1. Extract the entire ZIP into a new folder, such as Downloads.
+2. Close Destiny 2.
+3. To KEEP YOUR EXISTING DAWN SAVE, double-click Update-Dawn.cmd.
+   To START A FRESH SAVE, double-click Install-Dawn.cmd.
+4. Enter the game folder containing destiny2.exe.
+5. Wait for success, then launch destiny2.exe normally.
+
+Requires Destiny 2 version 86657.20.08.23.1800.d2_rc and Windows PowerShell 5.1
+or newer. The game is not included. No compiler, Python, separate Lua
+installation, or source checkout is needed. Keep the scripts, release.json,
+and payload folder together; do not run from inside the ZIP.
+
+UPDATING AN OLDER DAWN RELEASE
+
+Update-Dawn keeps progress, inventory, identity, saved game settings, Dawn
+preferences, event choices, and custom files. It installs the current DLL,
+packaged missions, vendor rules, and event presets at both game load locations.
+Packaged files replace older files with the same names. Custom scripts with
+other names remain. Separate root/bin profiles remain separate.
+
+Old save databases are upgraded automatically on first launch. Caches rebuild,
+so that launch can take longer. Your native graphics and key-binding preference
+file is not changed by the updater. Repeating an update keeps existing progress.
+Update-Dawn requires an existing Dawn profile; it does not select a Sunrise or
+Restoration profile. These older folders remain intact.
+
+Run the updater directly from PowerShell:
+  .\Update-Dawn.ps1 -GameRoot 'D:\Games\Destiny 2'
+
+Preview an update without making changes:
+  .\Update-Dawn.ps1 -GameRoot 'D:\Games\Destiny 2' -WhatIf
+
+FRESH INSTALLATION
+
+Install-Dawn starts a fresh save EVERY TIME, including a reinstall. The previous
+Dawn folders and DLLs are backed up, but their personal data is not imported.
+The fresh installer sets Windowed Fullscreen and preserves resolution, render
+scale, graphics quality, and native key bindings. This display mode is shared
+by Destiny installations under the same Windows user. You can change it later.
+
+BACKUP AND ROLLBACK
+
+Both workflows keep complete backups under <game>\.dawn\release-backups.
+If replacement fails, the script attempts to restore the previous files.
+Nothing launches automatically and no running game is stopped for you.
+
+To restore the most recent installation or update, close Destiny 2 and run:
+  .\Update-Dawn.ps1 -GameRoot 'D:\Games\Destiny 2' -Restore
+
+To choose a particular backup, also pass -BackupPath followed by its full path.
+Restore rolls back BOTH the DLL and its matching save. Do not replace an older
+DLL on its own after a save upgrade. Progress created after the update is kept
+separately in the backup's after-restore folder. Keep it if you need that data.
+
+If recovery is required after an interruption, use the backup path in the error
+message. Do not delete that backup. Restoring a fresh installation also restores
+its previous display preferences and must use the installing Windows account.
+Restoring an update does not change display preferences.
+
+Only run release bundles from a trusted publisher. Payload hashes detect missing
+or changed files; they do not authenticate the publisher.

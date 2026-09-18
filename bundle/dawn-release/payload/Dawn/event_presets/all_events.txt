@@ -1,0 +1,2 @@
+# ALL EVENTS: nothing withheld; every seasonal group in every area.
+# Copy this file over roster_exclude_keys.txt, then go to orbit and load back into the Tower. Keys listed here are WITHHELD.

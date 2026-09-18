@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+dist-release/
+depots/
+src-tauri/target/
+target/
+
+# Logs & Temporary files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local machine cargo overrides
+.cargo/
+src-tauri/.cargo/
+
+# Local environment variables
+.env
+.env.*
+!.env.example

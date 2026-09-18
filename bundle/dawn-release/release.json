@@ -1,0 +1,229 @@
+{
+  "schema": 1,
+  "release": "0.1.3",
+  "gameBuild": 86657,
+  "runtimeDirectory": "Dawn",
+  "createdUtc": "2026-09-18T13:40:56.9057245Z",
+  "files": [
+    {
+      "path": "steam_api64.dll",
+      "size": 25855488,
+      "sha256": "075150aff50b72f31310c0d5e6188d8f85b77448ba10a41a66acf6dcd7fe82c3"
+    },
+    {
+      "path": "Dawn/settings.json",
+      "size": 73476,
+      "sha256": "5b4ae420352bb13a4ae83f16cdce6affabec15c4d0a511f22fdfd954d2267431"
+    },
+    {
+      "path": "Dawn/hud.json",
+      "size": 288,
+      "sha256": "4bf88ee7590584734a1f1f22e1d5c9c1cdf6caf746bbd01e5b6501bdc1098865"
+    },
+    {
+      "path": "Dawn/movement.json",
+      "size": 232,
+      "sha256": "14510d3f88974b8103402de9a97934edf2d7323db23632edf47f448448af408b"
+    },
+    {
+      "path": "Dawn/player.json",
+      "size": 39,
+      "sha256": "c5f23214ff1401cf5a7e1644224f3ef943b358855bf9befecbe2de839796600e"
+    },
+    {
+      "path": "Dawn/scripts/beyond_infinity.lua",
+      "size": 14333,
+      "sha256": "a38c7bd25abf593b315445ecca7a3f956bf236d69a7f67d79761d362f33f0644"
+    },
+    {
+      "path": "Dawn/scripts/city_tower_social_d2.json",
+      "size": 2678,
+      "sha256": "14c892ebcaa334f2e13019b425460e75e714f120885bd9a722b44d1bbeef593e"
+    },
+    {
+      "path": "Dawn/scripts/deadly_trial.lua",
+      "size": 4627,
+      "sha256": "becf036af8b43a987c3cdfa4646b101663916a62e0120757920116d2d1b1dfe6"
+    },
+    {
+      "path": "Dawn/scripts/deep_storage.lua",
+      "size": 15195,
+      "sha256": "5f0da485acdfd0e75f49da4dcbb958a96550e0c16fe4083bf23cb61776058943"
+    },
+    {
+      "path": "Dawn/scripts/dreaming_city_freeroam.json",
+      "size": 2269,
+      "sha256": "0579e0f11dbb8360f463892dc6a138ad147828f94322ce6291e28f27f7141b4e"
+    },
+    {
+      "path": "Dawn/scripts/eden_freeroam.json",
+      "size": 2219,
+      "sha256": "9857e74dad5aeb08d79525c5c4420a193a7cfebf470fa93b54b5ce6610566991"
+    },
+    {
+      "path": "Dawn/scripts/edz_freeroam.json",
+      "size": 2222,
+      "sha256": "50e2eb005df01f1dd8c4f83f6d5969e5092191e7f3d12522697f813010321f08"
+    },
+    {
+      "path": "Dawn/scripts/fleet_freeroam.json",
+      "size": 2229,
+      "sha256": "89743ade5a45a2a7efe80c0b1d398c90338e145bb59f1c562a993a1a5401e89f"
+    },
+    {
+      "path": "Dawn/scripts/gateway.lua",
+      "size": 6639,
+      "sha256": "3be76ee1bd93f1852910e27fb2742ae90d39fec856fb972ea84ac892d739bdf7"
+    },
+    {
+      "path": "Dawn/scripts/hijacked.lua",
+      "size": 10672,
+      "sha256": "53d59dc8bc2b7dfd8ce7d34678c8861b6619b1350b256c557a73c46e1fe85b71"
+    },
+    {
+      "path": "Dawn/scripts/infinite_abyss.json",
+      "size": 9704,
+      "sha256": "e2087a8b557a58ad54a7a67291cfb3405e2535765138ade4673db5644cd08827"
+    },
+    {
+      "path": "Dawn/scripts/launchpad.lua",
+      "size": 495,
+      "sha256": "951ef90ae7c3f90c43d3e18882e6d1655dab661f331f929648f8de516399ca04"
+    },
+    {
+      "path": "Dawn/scripts/luna_freeroam.json",
+      "size": 2226,
+      "sha256": "b421404b9404559b0bf6ea9b9a6e48f50d4af6358e2133554873ae1ff45abc78"
+    },
+    {
+      "path": "Dawn/scripts/mercury_freeroam.json",
+      "size": 15019,
+      "sha256": "a2d7953703630ff301a7c8da1c8aab90404e78076ca06872ca23f3f62b1db9a6"
+    },
+    {
+      "path": "Dawn/scripts/mission_bond.lua",
+      "size": 19969,
+      "sha256": "03e344e0d900073d35730cf2c9f04da79b0aa386d3d441d3961b12e76d307172"
+    },
+    {
+      "path": "Dawn/scripts/mission_pact.lua",
+      "size": 12216,
+      "sha256": "8b78c0a012edf1dcf30ec9d080bb3f4c48a0a8065f7f1b055b71fa5cffae42eb"
+    },
+    {
+      "path": "Dawn/scripts/omega.lua",
+      "size": 38839,
+      "sha256": "9c3eeac9a62bcdfc65e74f212ed9a583707fb32e239c3c744ed0cc708afb9833"
+    },
+    {
+      "path": "Dawn/scripts/planet_x_freeroam.json",
+      "size": 2235,
+      "sha256": "477063ec514a7b63291bcff4d32fa2a3a3f54805f96fddcc08b0cbd983083bed"
+    },
+    {
+      "path": "Dawn/scripts/polaris_freeroam.json",
+      "size": 2228,
+      "sha256": "2fd94c08c9d411eda4ebe0b33a0160974e115655f2e33d642ee142c33fbf5903"
+    },
+    {
+      "path": "Dawn/scripts/strike_bond.lua",
+      "size": 15193,
+      "sha256": "d4c41d53a07b7d278a9de6ee7829d5a426195e7c7aeceb8f73e59697e7812204"
+    },
+    {
+      "path": "Dawn/scripts/strike_pact.lua",
+      "size": 8545,
+      "sha256": "afb2ce2c65fb769aa871dbf51bca5fd3872dc3b842a8efd94f02f0fd4d9e2ad0"
+    },
+    {
+      "path": "Dawn/scripts/tangled_shore_freeroam.json",
+      "size": 2269,
+      "sha256": "b703fc8e54ff0de15151e9d6d5438cbb8d64ffd6e96b2d1bc2026966cfc80532"
+    },
+    {
+      "path": "Dawn/vendor_catalog.txt",
+      "size": 1218,
+      "sha256": "5361360f82d70d14b56f194498a55baa9adfaa94b355ae4733a6dfd6af227138"
+    },
+    {
+      "path": "Dawn/vendor_bounty_roll.txt",
+      "size": 3358,
+      "sha256": "74baa616296a3662f3fda7039ac63a32b66a014c4b93f0df65d769dc6744870f"
+    },
+    {
+      "path": "Dawn/vendor_exchange.txt",
+      "size": 19566,
+      "sha256": "99343a96bf67c8ac2e609720949bf9d1cd451047145941018bd78ed46b49b23d"
+    },
+    {
+      "path": "Dawn/vendor_item_substitute.txt",
+      "size": 1019,
+      "sha256": "818a910bbfa51955cafc580bf993152fc82bef5885b5cf46a9e109352f12b270"
+    },
+    {
+      "path": "Dawn/event_presets/all_events.txt",
+      "size": 195,
+      "sha256": "1816c42d410809282f3cec3e13d9b3e851f270230178af893258eea9c389bda3"
+    },
+    {
+      "path": "Dawn/event_presets/KEY_MAP.txt",
+      "size": 1662,
+      "sha256": "415f81f6c2f8e1887004c45fa9922df8d4c931171b1d301f752c151089a26f3c"
+    },
+    {
+      "path": "Dawn/event_presets/no_events.txt",
+      "size": 458,
+      "sha256": "bb65eb98d1cd1faa76a755cb6787160a1a3d15d6993edd41990443930d42d711"
+    },
+    {
+      "path": "Dawn/event_presets/only_crimson_days.txt",
+      "size": 554,
+      "sha256": "5696f66a1ca4226cec778e8ac2e6dfa31cde67c81eb9a6ac82217fa26adf9557"
+    },
+    {
+      "path": "Dawn/event_presets/only_dawning.txt",
+      "size": 781,
+      "sha256": "912dd6db6f26bfe74004004a2cf83730e85d8f3c831947d651af0584c831392f"
+    },
+    {
+      "path": "Dawn/event_presets/only_festival_of_the_lost.txt",
+      "size": 764,
+      "sha256": "87c8ad44325d5cdaa65be4f795ffad44d2c029b8824d1dec6e2241fc74b123d8"
+    },
+    {
+      "path": "Dawn/event_presets/only_iron_banner.txt",
+      "size": 627,
+      "sha256": "2ffc2d3fa44527330454516aafc495a4f56a69799a46a8c13ac640545f6e7f90"
+    },
+    {
+      "path": "Dawn/event_presets/only_solstice.txt",
+      "size": 596,
+      "sha256": "b4e8b93f5287e19d2b699ca680e50343bdba78fd942c919bddfff89e4c38dded"
+    },
+    {
+      "path": "Dawn/event_presets/only_trials_saint14.txt",
+      "size": 592,
+      "sha256": "ec26f468fbe6bd1f59728a4a30d3ed6d80a8dfddf549ceeb5bcdf0a49ca51e5f"
+    },
+    {
+      "path": "Dawn/licenses/Lua.txt",
+      "size": 1086,
+      "sha256": "0df9f5b648a59a404a740270bd3ce213580cfcdd97c5132815b21eca564b43df"
+    },
+    {
+      "path": "Dawn/licenses/ImGui.txt",
+      "size": 1104,
+      "sha256": "f20418b409e53c8c9f4e90917ff395554a60320d4dfbf833da89b339cad8628a"
+    },
+    {
+      "path": "Dawn/licenses/Detours.md",
+      "size": 1122,
+      "sha256": "f854ae8aabc0404652b48a2b3bf7f21ec174c69d73f5596934c20884eb0639ef"
+    },
+    {
+      "path": "Dawn/licenses/Sundial.txt",
+      "size": 35823,
+      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809"
+    }
+  ]
+}

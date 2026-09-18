@@ -1,0 +1,406 @@
+{
+  "format_version": 2,
+  "mission": "infinite_abyss",
+  "profile": "haunted_forest.native.v1",
+  "authority_schema": "nativeOtherActivities",
+  "assets": {
+    "persistent_module": {
+      "registry": "0x81550015",
+      "definition": "0x81550015",
+      "type": 0,
+      "slot": 0
+    }
+  },
+  "bindings": {
+    "start_services": {
+      "capability": "persistent.start",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "prepareEntry": {
+      "capability": "prepareEntry",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "plateOccupied": {
+      "capability": "plateOccupied",
+      "operation": "observation",
+      "asset": "persistent_module",
+      "argument": 2,
+      "wait": "observed"
+    },
+    "capture": {
+      "capability": "capture",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 3,
+      "wait": "completed"
+    },
+    "startTraversal": {
+      "capability": "startTraversal",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 4,
+      "wait": "requested"
+    },
+    "progressFull": {
+      "capability": "progressFull",
+      "operation": "observation",
+      "asset": "persistent_module",
+      "argument": 5,
+      "wait": "observed"
+    },
+    "travelEncounter": {
+      "capability": "travelEncounter",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 6,
+      "wait": "requested"
+    },
+    "travelArrived": {
+      "capability": "travelArrived",
+      "operation": "observation",
+      "asset": "persistent_module",
+      "argument": 7,
+      "wait": "observed"
+    },
+    "spawnEncounter": {
+      "capability": "spawnEncounter",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 8,
+      "wait": "completed"
+    },
+    "bossDead": {
+      "capability": "bossDead",
+      "operation": "observation",
+      "asset": "persistent_module",
+      "argument": 9,
+      "wait": "observed"
+    },
+    "retireEncounter": {
+      "capability": "retireEncounter",
+      "operation": "observation",
+      "asset": "persistent_module",
+      "argument": 10,
+      "wait": "observed"
+    },
+    "travelEntry": {
+      "capability": "travelEntry",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 11,
+      "wait": "requested"
+    },
+    "travelRewards": {
+      "capability": "travelRewards",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 12,
+      "wait": "requested"
+    },
+    "complete": {
+      "capability": "complete",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 13,
+      "wait": "requested"
+    }
+  },
+  "graphs": {
+    "entry": {
+      "name": "Start persistent Haunted Forest services",
+      "domain": "composition",
+      "steps": [
+        {
+          "id": "activate",
+          "after": [],
+          "commands": [
+            {
+              "id": "services",
+              "binding": "start_services"
+            }
+          ]
+        }
+      ],
+      "receipts": {}
+    },
+    "round.entry": {
+      "name": "Haunted Forest round entry",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "prepareEntry",
+          "after": [],
+          "commands": [
+            {
+              "id": "prepareEntry",
+              "binding": "prepareEntry"
+            }
+          ]
+        },
+        {
+          "id": "plateOccupied",
+          "after": [
+            "prepareEntry"
+          ],
+          "commands": [
+            {
+              "id": "plateOccupied",
+              "binding": "plateOccupied"
+            }
+          ]
+        },
+        {
+          "id": "capture",
+          "after": [
+            "plateOccupied"
+          ],
+          "commands": [
+            {
+              "id": "capture",
+              "binding": "capture"
+            }
+          ]
+        },
+        {
+          "id": "startTraversal",
+          "after": [
+            "capture"
+          ],
+          "commands": [
+            {
+              "id": "startTraversal",
+              "binding": "startTraversal"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "plateOccupied": "plateOccupied",
+        "capture": "capture"
+      }
+    },
+    "round.traversal": {
+      "name": "Haunted Forest traversal",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "progressFull",
+          "after": [],
+          "commands": [
+            {
+              "id": "progressFull",
+              "binding": "progressFull"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "progressFull": "progressFull"
+      }
+    },
+    "round.toEncounter": {
+      "name": "Haunted Forest encounter travel",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "travelEncounter",
+          "after": [],
+          "commands": [
+            {
+              "id": "travelEncounter",
+              "binding": "travelEncounter"
+            }
+          ]
+        },
+        {
+          "id": "travelArrived",
+          "after": [
+            "travelEncounter"
+          ],
+          "commands": [
+            {
+              "id": "travelArrived",
+              "binding": "travelArrived"
+            }
+          ]
+        },
+        {
+          "id": "spawnEncounter",
+          "after": [
+            "travelArrived"
+          ],
+          "commands": [
+            {
+              "id": "spawnEncounter",
+              "binding": "spawnEncounter"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "travelArrived": "travelArrived",
+        "spawnEncounter": "spawnEncounter"
+      }
+    },
+    "round.encounter": {
+      "name": "Haunted Forest encounter",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "bossDead",
+          "after": [],
+          "commands": [
+            {
+              "id": "bossDead",
+              "binding": "bossDead"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "bossDead": "bossDead"
+      }
+    },
+    "round.returning": {
+      "name": "Haunted Forest return",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "retireEncounter",
+          "after": [],
+          "commands": [
+            {
+              "id": "retireEncounter",
+              "binding": "retireEncounter"
+            }
+          ]
+        },
+        {
+          "id": "travelEntry",
+          "after": [
+            "retireEncounter"
+          ],
+          "commands": [
+            {
+              "id": "travelEntry",
+              "binding": "travelEntry"
+            }
+          ]
+        },
+        {
+          "id": "travelArrived",
+          "after": [
+            "travelEntry"
+          ],
+          "commands": [
+            {
+              "id": "travelArrived",
+              "binding": "travelArrived"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "retireEncounter": "retireEncounter",
+        "travelArrived": "travelArrived"
+      }
+    },
+    "round.rewards": {
+      "name": "Haunted Forest rewards",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "retireEncounter",
+          "after": [],
+          "commands": [
+            {
+              "id": "retireEncounter",
+              "binding": "retireEncounter"
+            }
+          ]
+        },
+        {
+          "id": "travelRewards",
+          "after": [
+            "retireEncounter"
+          ],
+          "commands": [
+            {
+              "id": "travelRewards",
+              "binding": "travelRewards"
+            }
+          ]
+        },
+        {
+          "id": "travelArrived",
+          "after": [
+            "travelRewards"
+          ],
+          "commands": [
+            {
+              "id": "travelArrived",
+              "binding": "travelArrived"
+            }
+          ]
+        },
+        {
+          "id": "complete",
+          "after": [
+            "travelArrived"
+          ],
+          "commands": [
+            {
+              "id": "complete",
+              "binding": "complete"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "retireEncounter": "retireEncounter",
+        "travelArrived": "travelArrived"
+      }
+    }
+  },
+  "roles": {
+    "persistent": "entry",
+    "round.entry": "round.entry",
+    "round.traversal": "round.traversal",
+    "round.toEncounter": "round.toEncounter",
+    "round.encounter": "round.encounter",
+    "round.returning": "round.returning",
+    "round.rewards": "round.rewards"
+  },
+  "entry": "entry",
+  "modules": [
+    "persistent"
+  ],
+  "observations": [],
+  "parameters": {
+    "host.tick_hz": 30,
+    "capture.duration_ms": 8000,
+    "forest.seed": 0,
+    "forest.entry_column": 2,
+    "forest.entry_height": 2,
+    "forest.duration_ms": 900000,
+    "encounter.population.count": 1
+  },
+  "presentation": {
+    "dialogue": {
+      "bank": "0x00000000",
+      "rows": [],
+      "objective_cues": [],
+      "dispatch_timeout_ms": 1000,
+      "spacing_ms": 60000
+    },
+    "cue_sets": {},
+    "action_sets": {},
+    "binding_tables": {}
+  }
+}

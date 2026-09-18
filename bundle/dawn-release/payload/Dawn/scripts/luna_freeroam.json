@@ -1,0 +1,99 @@
+{
+  "format_version": 2,
+  "mission": "luna_freeroam",
+  "profile": "moon.freeroam.native.v1",
+  "authority_schema": "nativeOtherActivities",
+  "assets": {
+    "persistent_module": {
+      "registry": "0x81503E69",
+      "definition": "0x81503E69",
+      "type": 0,
+      "slot": 0
+    },
+    "bootstrap_population": {
+      "registry": "0x2F2CA9F5",
+      "definition": "0x81565CBB",
+      "type": 1,
+      "slot": 0
+    }
+  },
+  "bindings": {
+    "start_services": {
+      "capability": "persistent.start",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "bootstrap_population": {
+      "capability": "bootstrap.population",
+      "operation": "population",
+      "asset": "bootstrap_population",
+      "argument": 1,
+      "wait": "requested"
+    }
+  },
+  "graphs": {
+    "entry": {
+      "name": "Start Moon free-roam services",
+      "domain": "composition",
+      "steps": [
+        {
+          "id": "activate",
+          "after": [],
+          "commands": [
+            {
+              "id": "services",
+              "binding": "start_services"
+            }
+          ]
+        }
+      ],
+      "receipts": {}
+    },
+    "world": {
+      "name": "Moon native free-roam startup",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "population",
+          "after": [],
+          "commands": [
+            {
+              "id": "bootstrap",
+              "binding": "bootstrap_population"
+            }
+          ]
+        }
+      ],
+      "receipts": {}
+    }
+  },
+  "roles": {
+    "persistent": "world"
+  },
+  "entry": "entry",
+  "modules": [
+    "persistent"
+  ],
+  "observations": [],
+  "parameters": {
+    "freeroam_population_enabled": 1,
+    "freeroam_respawn_ms": 30000,
+    "freeroam_patrol_count": 1,
+    "freeroam_npc_count": 1,
+    "host.tick_hz": 30
+  },
+  "presentation": {
+    "dialogue": {
+      "bank": "0x00000000",
+      "rows": [],
+      "objective_cues": [],
+      "dispatch_timeout_ms": 100,
+      "spacing_ms": 0
+    },
+    "cue_sets": {},
+    "action_sets": {},
+    "binding_tables": {}
+  }
+}

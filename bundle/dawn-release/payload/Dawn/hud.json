@@ -1,0 +1,12 @@
+{
+  "dawn_card": false,
+  "current_status": false,
+  "session": false,
+  "status_activity": true,
+  "status_bubble": true,
+  "status_slice_set": true,
+  "status_closest_spawn": false,
+  "status_mission_trigger": true,
+  "status_world_load": false,
+  "status_position": true
+}

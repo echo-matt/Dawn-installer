@@ -1,0 +1,117 @@
+{
+  "format_version": 2,
+  "mission": "city_tower_social_d2",
+  "profile": "city_tower_social_d2.native.v1",
+  "authority_schema": "nativeOtherActivities",
+  "assets": {
+    "persistent_module": {
+      "registry": "0x80B4A0F4",
+      "definition": "0x80B4A0F4",
+      "type": 0,
+      "slot": 0
+    },
+    "eva": {
+      "registry": "0x7C6DE64F",
+      "definition": "0x80B4AF52",
+      "type": 1,
+      "slot": 0
+    },
+    "eva_idle": {
+      "registry": "0x7C6DE64F",
+      "definition": "0x80B4AF5B",
+      "type": 42,
+      "slot": 3
+    },
+    "forest_launch": {
+      "registry": "0x7C6DE64F",
+      "definition": "0x80B4AF55",
+      "type": 4,
+      "slot": 1
+    }
+  },
+  "bindings": {
+    "start_services": {
+      "capability": "persistent.start",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "eva": {
+      "capability": "eva",
+      "operation": "population",
+      "asset": "eva",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "eva_idle": {
+      "capability": "eva.idle",
+      "operation": "mechanic",
+      "asset": "eva_idle",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "forest_launch": {
+      "capability": "forest_launch",
+      "operation": "device",
+      "asset": "forest_launch",
+      "argument": 1,
+      "wait": "requested"
+    }
+  },
+  "graphs": {
+    "entry": {
+      "name": "Start persistent Tower services",
+      "domain": "composition",
+      "steps": [
+        {
+          "id": "activate",
+          "after": [],
+          "commands": [
+            { "id": "services", "binding": "start_services" }
+          ]
+        }
+      ],
+      "receipts": {}
+    },
+    "tower": {
+      "name": "Tower Eva and Forest launch native startup",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "activate",
+          "after": [],
+          "commands": [
+            { "id": "eva", "binding": "eva" },
+            { "id": "eva_idle", "binding": "eva_idle" },
+            { "id": "forest_launch", "binding": "forest_launch" }
+          ]
+        }
+      ],
+      "receipts": {}
+    }
+  },
+  "roles": {
+    "persistent": "tower"
+  },
+  "entry": "entry",
+  "modules": [
+    "persistent"
+  ],
+  "observations": [],
+  "parameters": {
+    "eva_count": 1
+  },
+  "presentation": {
+    "dialogue": {
+      "bank": "0x00000000",
+      "rows": [],
+      "objective_cues": [],
+      "dispatch_timeout_ms": 100,
+      "spacing_ms": 0
+    },
+    "cue_sets": {},
+    "action_sets": {},
+    "binding_tables": {}
+  }
+}
