@@ -23,6 +23,7 @@
   let dawnVersion = $state(null);
   let latestDawnVersion = $state(null);
   let isOperationRunning = $state(false);
+  let isLinux = $state(false);
 
   // Progress Card State
   let progressVisible = $state(false);
@@ -93,7 +94,9 @@
           ? 'Install Dawn'
           : isDawnUpdateAvailable
             ? 'UPDATE'
-            : 'Launch Game'
+            : isLinux
+              ? 'Update Dawn'
+              : 'Launch Game'
   );
 
   async function checkFolderStatus(folderPath) {
@@ -126,6 +129,8 @@
       if (preflight.has_dawn) {
         if (isDawnUpdateAvailable) {
           folderTitle = `${folderPath} — Dawn mod update available (v${dawnVersion || '?'} -> v${latestDawnVersion})`;
+        } else if (isLinux) {
+          folderTitle = `${folderPath} — Destiny 2 + Dawn ${dawnVersion ? 'v' + dawnVersion : ''} ready (run ./launch-destiny.sh)`;
         } else {
           folderTitle = `${folderPath} — Destiny 2 + Dawn ${dawnVersion ? 'v' + dawnVersion : ''} ready`;
         }
@@ -160,10 +165,20 @@
   }
 
   async function launchGame() {
+    if (isLinux) {
+      showToast('On Linux, please launch Destiny 2 using ./launch-destiny.sh in your game folder.', 5000);
+      return;
+    }
     showToast('Launching Destiny 2...');
-    const res = await api.launchGame(selectedFolder, selectedLanguage);
-    if (!res.success) {
-      showToast(res.error || res.message || 'Failed to launch game');
+    try {
+      const res = await api.launchGame(selectedFolder, selectedLanguage);
+      if (!res.success) {
+        showToast(res.error || res.message || 'Failed to launch game', 5000);
+      } else {
+        showToast(res.message || 'Game launched successfully!', 3500);
+      }
+    } catch (err) {
+      showToast(`Launch error: ${err.message || err}`, 5000);
     }
   }
 
@@ -211,7 +226,7 @@
     }
 
     if (hasGameInstalled) {
-      if (!hasDawnInstalled || isDawnUpdateAvailable) {
+      if (!hasDawnInstalled || isDawnUpdateAvailable || isLinux) {
         await runDirectDawnInstall();
         return;
       }
@@ -433,7 +448,15 @@
   }
 
   onMount(async () => {
-    // 0. Fetch latest Dawn release version for update comparison
+    // 0. Detect OS platform
+    try {
+      const platform = await api.getPlatform();
+      isLinux = platform === 'linux';
+    } catch (_) {
+      isLinux = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('linux');
+    }
+
+    // 0.1. Fetch latest Dawn release version for update comparison
     try {
       const ver = await api.getLatestDawnVersion();
       if (ver) {
@@ -555,6 +578,7 @@
       {selectedLanguage}
       {installButtonText}
       {isOperationRunning}
+      {isLinux}
       isUpdateAvailable={isDawnUpdateAvailable}
       onSelectFolder={handleSelectFolder}
       onLanguageChange={handleLanguageChange}

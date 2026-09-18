@@ -14,6 +14,13 @@ export const api = {
     return 'C:\\Games\\Destiny 2';
   },
 
+  async getPlatform() {
+    if (isTauri) {
+      return await invoke('get_platform');
+    }
+    return typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('linux') ? 'linux' : 'windows';
+  },
+
   async getLatestDawnVersion() {
     if (isTauri) {
       return await invoke('get_latest_dawn_version');

@@ -6,6 +6,7 @@
     selectedLanguage = 'english',
     installButtonText = 'Install',
     isOperationRunning = false,
+    isLinux = false,
     onSelectFolder = () => {},
     onLanguageChange = () => {},
     onInstall = () => {},
@@ -142,7 +143,7 @@
 
       <!-- Popover Menu -->
       <div class="popover-menu" class:active={isMenuOpen} class:open={isMenuOpen} id="install-menu">
-        {#if isUpdateAvailable}
+        {#if isUpdateAvailable && !isLinux}
           <button type="button" class="menu-item" id="opt-launch-anyway" onclick={() => { closeMenu(); onLaunchAnyway(); }}>
             <span>Launch Game (Skip Update)</span>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>

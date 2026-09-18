@@ -99,8 +99,18 @@ pub fn clear_cache(game_root: String) -> CommandResult {
 }
 
 #[tauri::command]
-pub fn launch_game(game_root: String, language_code: Option<String>) -> CommandResult {
-    installer_launch(game_root, language_code)
+pub fn get_platform() -> String {
+    #[cfg(windows)]
+    { "windows".to_string() }
+    #[cfg(target_os = "linux")]
+    { "linux".to_string() }
+    #[cfg(target_os = "macos")]
+    { "macos".to_string() }
+}
+
+#[tauri::command]
+pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<String>) -> CommandResult {
+    installer_launch(app, game_root, language_code)
 }
 
 #[tauri::command]

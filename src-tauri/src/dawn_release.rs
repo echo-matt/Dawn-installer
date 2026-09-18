@@ -573,6 +573,8 @@ pub async fn deploy_dawn_to_game(
     let _ = fs::write(dawn_meta.join("release.json"), &formatted);
     let _ = fs::write(target.join("release.json"), &formatted);
 
+    crate::installer::ensure_launch_scripts(target);
+
     let _ = app.emit("depot:output", "[DAWN] Dawn mod deployed successfully!\r\n");
     Ok(())
 }

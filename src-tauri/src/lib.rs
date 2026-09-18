@@ -36,6 +36,13 @@ pub fn round_window_corners(window: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     let download_state = Arc::new(ActiveDownloadState::new());
 
     tauri::Builder::default()
@@ -43,6 +50,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            commands::get_platform,
             commands::select_game_folder,
             commands::get_installer_constants,
             commands::validate_preflight,

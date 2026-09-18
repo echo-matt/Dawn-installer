@@ -166,7 +166,15 @@ function run() {
       if (fs.existsSync(destTar)) {
         try { fs.unlinkSync(destTar); } catch (e) {}
       }
-      execSync(`tar -czf "${destTar}" -C "${path.dirname(releaseExe)}" "${path.basename(releaseExe)}"`, { cwd: rootDir, stdio: 'inherit' });
+      const dawnShSrc = path.join(rootDir, 'DAWN.sh');
+      const dawnShDest = path.join(path.dirname(releaseExe), 'DAWN.sh');
+      if (fs.existsSync(dawnShSrc)) {
+        fs.copyFileSync(dawnShSrc, dawnShDest);
+        try { fs.chmodSync(dawnShDest, 0o755); } catch (_) {}
+        execSync(`tar -czf "${destTar}" -C "${path.dirname(releaseExe)}" "${path.basename(releaseExe)}" "DAWN.sh"`, { cwd: rootDir, stdio: 'inherit' });
+      } else {
+        execSync(`tar -czf "${destTar}" -C "${path.dirname(releaseExe)}" "${path.basename(releaseExe)}"`, { cwd: rootDir, stdio: 'inherit' });
+      }
       if (fs.existsSync(destTar)) {
         console.log(`[TAR]  Created ${path.basename(destTar)} (${(fs.statSync(destTar).size / 1024 / 1024).toFixed(2)} MB)`);
       }
