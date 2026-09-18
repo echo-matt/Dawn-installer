@@ -280,32 +280,51 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
                 },
             );
 
-            let mut tar_cmd = Command::new("tar");
-            tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
             #[cfg(windows)]
-            {
+            let extracted = {
                 use std::os::windows::process::CommandExt;
+                let mut tar_cmd = Command::new("tar");
+                tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
                 tar_cmd.creation_flags(0x08000000);
-            }
-            let tar_res = tar_cmd.output();
+                match tar_cmd.output() {
+                    Ok(out) if out.status.success() => true,
+                    _ => {
+                        let ps_script = format!(
+                            "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+                            zip_path.to_str().unwrap(),
+                            target_dir.to_str().unwrap()
+                        );
+                        let mut ps_cmd = Command::new("powershell");
+                        ps_cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script]);
+                        ps_cmd.creation_flags(0x08000000);
+                        matches!(ps_cmd.output(), Ok(out) if out.status.success())
+                    }
+                }
+            };
 
-            let extracted = match tar_res {
-                Ok(out) if out.status.success() => true,
-                _ => {
-                    let ps_script = format!(
-                        "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+            #[cfg(not(windows))]
+            let extracted = {
+                let mut unzip_cmd = Command::new("unzip");
+                unzip_cmd.args(["-o", zip_path.to_str().unwrap(), "-d", target_dir.to_str().unwrap()]);
+                if matches!(unzip_cmd.output(), Ok(ref out) if out.status.success()) {
+                    true
+                } else {
+                    // Python 3 fallback (present on NixOS and virtually all Linux distributions)
+                    let py_script = format!(
+                        "import zipfile; zipfile.ZipFile('{}').extractall('{}')",
                         zip_path.to_str().unwrap(),
                         target_dir.to_str().unwrap()
                     );
-                    let mut ps_cmd = Command::new("powershell");
-                    ps_cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script]);
-                    #[cfg(windows)]
-                    {
-                        use std::os::windows::process::CommandExt;
-                        ps_cmd.creation_flags(0x08000000);
+                    let mut py_cmd = Command::new("python3");
+                    py_cmd.args(["-c", &py_script]);
+                    if matches!(py_cmd.output(), Ok(ref out) if out.status.success()) {
+                        true
+                    } else {
+                        // Tar fallback (works if bsdtar is installed)
+                        let mut tar_cmd = Command::new("tar");
+                        tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
+                        matches!(tar_cmd.output(), Ok(ref out) if out.status.success())
                     }
-                    let ps_res = ps_cmd.output();
-                    matches!(ps_res, Ok(out) if out.status.success())
                 }
             };
 

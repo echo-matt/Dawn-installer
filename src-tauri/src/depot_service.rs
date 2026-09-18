@@ -160,7 +160,18 @@ pub async fn ensure_depot_downloader(app: &AppHandle) -> Result<PathBuf, String>
                 let mut unzip_cmd = std::process::Command::new("unzip");
                 unzip_cmd.args(["-o", archive_path.to_str().unwrap(), "-d", tools_dir.to_str().unwrap()]);
                 let unzip_res = unzip_cmd.output();
-                matches!(unzip_res, Ok(out) if out.status.success())
+                if matches!(unzip_res, Ok(ref out) if out.status.success()) {
+                    true
+                } else {
+                    let py_script = format!(
+                        "import zipfile; zipfile.ZipFile('{}').extractall('{}')",
+                        archive_path.to_str().unwrap(),
+                        tools_dir.to_str().unwrap()
+                    );
+                    let mut py_cmd = std::process::Command::new("python3");
+                    py_cmd.args(["-c", &py_script]);
+                    matches!(py_cmd.output(), Ok(out) if out.status.success())
+                }
             }
         }
     };

@@ -11,21 +11,49 @@ use crate::types::{CommandResult, FolderValidationResult, PreflightResult, Progr
 pub fn get_bundled_payload_dir() -> PathBuf {
     let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
     let app_dir = current_exe.parent().unwrap_or(Path::new("."));
-    
-    // Check various relative locations for bundled payload
-    let candidates = [
+
+    // Check various relative locations for bundled payload across packaged and dev structures
+    let mut candidates = vec![
+        // Production adjacent and resources
         app_dir.join("bundle").join("dawn-release"),
-        app_dir.join("..").join("bundle").join("dawn-release"),
+        app_dir.join("_up_").join("bundle").join("dawn-release"),
         app_dir.join("resources").join("bundle").join("dawn-release"),
         app_dir.join("resources").join("dawn-release"),
-        PathBuf::from("bundle").join("dawn-release"),
+        // 1 level up (target/release)
+        app_dir.join("..").join("bundle").join("dawn-release"),
+        app_dir.join("..").join("_up_").join("bundle").join("dawn-release"),
+        // 2 levels up
+        app_dir.join("..").join("..").join("bundle").join("dawn-release"),
+        // 3 levels up (dev mode: src-tauri/target/debug -> repo root)
+        app_dir.join("..").join("..").join("..").join("bundle").join("dawn-release"),
+        // 4 levels up
+        app_dir.join("..").join("..").join("..").join("..").join("bundle").join("dawn-release"),
     ];
 
-    for c in candidates {
-        if c.exists() {
-            return c;
+    // Current working directory and parent paths (e.g. running from repo root or src-tauri)
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("bundle").join("dawn-release"));
+        candidates.push(cwd.join("..").join("bundle").join("dawn-release"));
+        candidates.push(cwd.join("..").join("..").join("bundle").join("dawn-release"));
+        candidates.push(cwd.join("resources").join("bundle").join("dawn-release"));
+    }
+
+    candidates.push(PathBuf::from("bundle").join("dawn-release"));
+    candidates.push(PathBuf::from("..").join("bundle").join("dawn-release"));
+
+    for c in &candidates {
+        if c.exists() && (c.join("payload").exists() || c.join("release.json").exists()) {
+            return c.clone();
         }
     }
+
+    // Fallback if payload/release.json check fails but folder exists
+    for c in &candidates {
+        if c.exists() {
+            return c.clone();
+        }
+    }
+
     app_dir.join("bundle").join("dawn-release")
 }
 
