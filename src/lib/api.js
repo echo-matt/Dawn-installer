@@ -256,6 +256,13 @@ export const api = {
     return () => {};
   },
 
+  onAuthSuccess(cb) {
+    if (isTauri) {
+      return listen('depot:auth-success', (event) => cb(event.payload));
+    }
+    return () => {};
+  },
+
   onAuthError(cb) {
     if (isTauri) {
       return listen('depot:auth-error', (event) => cb(event.payload));

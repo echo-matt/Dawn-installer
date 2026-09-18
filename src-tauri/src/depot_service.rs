@@ -450,6 +450,127 @@ pub async fn run_depot_download(
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum AuthInspectionResult {
+    None,
+    AuthSuccess,
+    AuthError { error_type: String, message: String },
+    SteamGuardPrompt { guard_type: String, message: String },
+}
+
+pub fn inspect_depot_auth(
+    rolling_lower: &str,
+    auth_method: &str,
+    auth_succeeded: bool,
+    has_auth_error: bool,
+    steam_guard_prompted: bool,
+) -> AuthInspectionResult {
+    if rolling_lower.contains("invalidpassword") {
+        return AuthInspectionResult::AuthError {
+            error_type: "invalid_password".to_string(),
+            message: "Incorrect Steam password or username. Please check your credentials and try again.".to_string(),
+        };
+    }
+    if rolling_lower.contains("twofactorcodemismatch") {
+        return AuthInspectionResult::AuthError {
+            error_type: "2fa_mismatch".to_string(),
+            message: "Incorrect Steam Guard code entered. Please try again.".to_string(),
+        };
+    }
+    if rolling_lower.contains("ratelimitexceeded") {
+        return AuthInspectionResult::AuthError {
+            error_type: "rate_limit".to_string(),
+            message: "Steam login rate limit exceeded. Please wait a few minutes before trying again.".to_string(),
+        };
+    }
+    if rolling_lower.contains("accountlogondenied") {
+        return AuthInspectionResult::AuthError {
+            error_type: "logon_denied".to_string(),
+            message: "Steam Guard access denied. Please check your Steam Guard configuration.".to_string(),
+        };
+    }
+    if rolling_lower.contains("timed out waiting for confirmation")
+        || (rolling_lower.contains("timeout") && rolling_lower.contains("failed to authenticate"))
+    {
+        return AuthInspectionResult::AuthError {
+            error_type: "timeout".to_string(),
+            message: "Authentication timed out waiting for Steam Guard confirmation. Please try again.".to_string(),
+        };
+    }
+    if rolling_lower.contains("failed to authenticate with steam") && !has_auth_error {
+        return AuthInspectionResult::AuthError {
+            error_type: "auth_failed".to_string(),
+            message: "Failed to authenticate with Steam. Please check your credentials.".to_string(),
+        };
+    }
+
+    // 2. Check Steam Guard prompts first so pending 2FA prompts take precedence
+    if auth_method != "qr" && !auth_succeeded && !has_auth_error && !steam_guard_prompted {
+        let is_email_guard = rolling_lower.contains("sent to your email")
+            || (rolling_lower.contains("steam guard") && rolling_lower.contains("email"))
+            || (rolling_lower.contains("authentication code") && rolling_lower.contains("email"));
+
+        let is_app_guard = rolling_lower.contains("2 factor")
+            || rolling_lower.contains("two-factor")
+            || rolling_lower.contains("authenticator app")
+            || rolling_lower.contains("auth code");
+
+        let is_general_guard = rolling_lower.contains("steam guard")
+            && (rolling_lower.contains("code") || rolling_lower.contains("enter"));
+
+        let is_mobile_approval = rolling_lower.contains("approve the login")
+            || rolling_lower.contains("mobile confirmation")
+            || rolling_lower.contains("confirm on your phone")
+            || rolling_lower.contains("waiting for mobile")
+            || (rolling_lower.contains("waiting for confirmation") && !rolling_lower.contains("timed out"));
+
+        if is_email_guard {
+            return AuthInspectionResult::SteamGuardPrompt {
+                guard_type: "code".to_string(),
+                message: "Enter the Steam Guard code sent to your email address:".to_string(),
+            };
+        }
+        if is_app_guard || is_general_guard {
+            return AuthInspectionResult::SteamGuardPrompt {
+                guard_type: "code".to_string(),
+                message: if rolling_lower.contains("email") {
+                    "Enter the Steam Guard code sent to your email address:".to_string()
+                } else {
+                    "Enter your Steam Guard Mobile Authenticator code:".to_string()
+                },
+            };
+        }
+        if is_mobile_approval {
+            return AuthInspectionResult::SteamGuardPrompt {
+                guard_type: "mobile_confirm".to_string(),
+                message: "Please approve the login request on your Steam Mobile App".to_string(),
+            };
+        }
+    }
+
+    // 3. Check authentication success (must NOT match "Connecting to Steam3... Done!")
+    if !auth_succeeded && !has_auth_error {
+        let is_login_done = rolling_lower.contains("logging in with qr code... done")
+            || ((rolling_lower.contains("logging '")
+                || rolling_lower.contains("logging \"")
+                || rolling_lower.contains("logging in to steam3"))
+                && rolling_lower.contains("... done"));
+
+        if is_login_done
+            || rolling_lower.contains("got login token")
+            || rolling_lower.contains("got account info")
+            || rolling_lower.contains("requesting app info")
+            || rolling_lower.contains("processing depot")
+            || rolling_lower.contains("requesting depot info")
+            || rolling_lower.contains("requesting manifest")
+        {
+            return AuthInspectionResult::AuthSuccess;
+        }
+    }
+
+    AuthInspectionResult::None
+}
+
 async fn execute_depot_step(
     app: &AppHandle,
     state: &Arc<ActiveDownloadState>,
@@ -542,6 +663,9 @@ async fn execute_depot_step(
     let mut detected_auth_error: Option<String> = None;
     let mut detected_auth_type: Option<String> = None;
     let mut detected_general_error: Option<String> = None;
+    let mut auth_succeeded = false;
+    let mut steam_guard_prompted = false;
+    let mut rolling_stdout = String::new();
 
     let depots_desc = depots
         .iter()
@@ -579,26 +703,42 @@ async fn execute_depot_step(
                             }
                         }
 
-                        // Inspect for Steam authentication errors
+                        // Keep rolling window for prompt & state detection across chunk boundaries
+                        rolling_stdout.push_str(&text);
+                        if rolling_stdout.len() > 8192 {
+                            let keep_from = rolling_stdout.len() - 4096;
+                            rolling_stdout = rolling_stdout[keep_from..].to_string();
+                        }
+
                         let lower = text.to_lowercase();
-                        if lower.contains("invalidpassword") {
-                            detected_auth_type = Some("invalid_password".to_string());
-                            detected_auth_error = Some("Incorrect Steam password or username. Please check your credentials and try again.".to_string());
-                        } else if lower.contains("twofactorcodemismatch") {
-                            detected_auth_type = Some("2fa_mismatch".to_string());
-                            detected_auth_error = Some("Incorrect Steam Guard code entered. Please try again.".to_string());
-                        } else if lower.contains("ratelimitexceeded") {
-                            detected_auth_type = Some("rate_limit".to_string());
-                            detected_auth_error = Some("Steam login rate limit exceeded. Please wait a few minutes before trying again.".to_string());
-                        } else if lower.contains("accountlogondenied") {
-                            detected_auth_type = Some("logon_denied".to_string());
-                            detected_auth_error = Some("Steam Guard access denied. Please check your Steam Guard configuration.".to_string());
-                        } else if lower.contains("timed out waiting for confirmation") || (lower.contains("timeout") && lower.contains("failed to authenticate")) {
-                            detected_auth_type = Some("timeout".to_string());
-                            detected_auth_error = Some("Authentication timed out waiting for Steam Guard confirmation. Please try again.".to_string());
-                        } else if lower.contains("failed to authenticate with steam") && detected_auth_error.is_none() {
-                            detected_auth_type = Some("auth_failed".to_string());
-                            detected_auth_error = Some("Failed to authenticate with Steam. Please check your credentials.".to_string());
+                        let rolling_lower = rolling_stdout.to_lowercase();
+
+                        // Inspect authentication state (errors, success, Steam Guard prompts)
+                        match inspect_depot_auth(
+                            &rolling_lower,
+                            auth_method,
+                            auth_succeeded,
+                            detected_auth_error.is_some(),
+                            steam_guard_prompted,
+                        ) {
+                            AuthInspectionResult::AuthError { error_type, message } => {
+                                detected_auth_type = Some(error_type);
+                                detected_auth_error = Some(message);
+                            }
+                            AuthInspectionResult::AuthSuccess => {
+                                auth_succeeded = true;
+                                crate::logger::log_msg("INFO", "Steam authentication successful. Emitting depot:auth-success.", Some(app));
+                                let _ = app.emit("depot:auth-success", ());
+                            }
+                            AuthInspectionResult::SteamGuardPrompt { guard_type, message } => {
+                                steam_guard_prompted = true;
+                                crate::logger::log_msg("INFO", &format!("Detected Steam Guard prompt ({}).", guard_type), Some(app));
+                                let _ = app.emit("depot:steam-guard", SteamGuardPayload {
+                                    guard_type,
+                                    message,
+                                });
+                            }
+                            AuthInspectionResult::None => {}
                         }
 
                         if (lower.contains("error:") || lower.contains("fatal:") || lower.contains("exception:")) && detected_general_error.is_none() {
@@ -610,33 +750,6 @@ async fn execute_depot_step(
                             if svg != last_qr {
                                 last_qr = svg.clone();
                                 let _ = app.emit("depot:qr-code", svg);
-                            }
-                        }
-
-                        // Check Steam Guard ONLY for credentials logins (never in QR mode),
-                        // and never trigger on the QR instruction text!
-                        if auth_method != "qr" {
-                            if lower.contains("2 factor auth code")
-                                || lower.contains("steam guard code")
-                                || lower.contains("verification code")
-                                || lower.contains("auth code")
-                                || lower.contains("two-factor") {
-                                let _ = app.emit("depot:steam-guard", SteamGuardPayload {
-                                    guard_type: "code".to_string(),
-                                    message: if lower.contains("email") {
-                                        "Enter the Steam Guard code sent to your email:".to_string()
-                                    } else {
-                                        "Enter your Steam Guard Mobile Authenticator code:".to_string()
-                                    }
-                                });
-                            } else if lower.contains("approve the login")
-                                || lower.contains("mobile confirmation")
-                                || lower.contains("confirm on your phone")
-                                || lower.contains("waiting for mobile") {
-                                let _ = app.emit("depot:steam-guard", SteamGuardPayload {
-                                    guard_type: "mobile_confirm".to_string(),
-                                    message: "Please approve the login request on your Steam Mobile App".to_string()
-                                });
                             }
                         }
 
@@ -835,8 +948,15 @@ async fn execute_depot_step(
 pub async fn send_input(state: &Arc<ActiveDownloadState>, input: &str) -> bool {
     let mut stdin_guard = state.child_stdin.lock().await;
     if let Some(stdin) = stdin_guard.as_mut() {
-        let msg = format!("{}\r\n", input.trim());
-        let _ = stdin.write_all(msg.as_bytes()).await;
+        let msg = if cfg!(windows) {
+            format!("{}\r\n", input.trim())
+        } else {
+            format!("{}\n", input.trim())
+        };
+        if let Err(e) = stdin.write_all(msg.as_bytes()).await {
+            eprintln!("[ERROR] Failed to write to child stdin: {}", e);
+            return false;
+        }
         let _ = stdin.flush().await;
         true
     } else {
@@ -989,5 +1109,86 @@ Logging in with QR code...
         assert!(svg.starts_with("<svg"), "Output must be an SVG element");
         assert!(svg.contains(r###"fill="#ffffff""###), "SVG must contain white background");
         assert!(svg.contains(r###"fill="#0f172a""###), "SVG must contain dark module rects");
+    }
+
+    #[test]
+    fn test_inspect_depot_auth_email_guard() {
+        // DepotDownloader email prompt format
+        let output = "Connecting to Steam3... Done!
+Logging 'destinyuser' to Steam3... This account is protected by Steam Guard. Please enter the authentication code sent to your email address: ".to_lowercase();
+
+        let res = inspect_depot_auth(&output, "credentials", false, false, false);
+        match res {
+            AuthInspectionResult::SteamGuardPrompt { guard_type, message } => {
+                assert_eq!(guard_type, "code");
+                assert!(message.to_lowercase().contains("email"));
+            }
+            other => panic!("Expected SteamGuardPrompt with email, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_inspect_depot_auth_app_2fa() {
+        let output = "Connecting to Steam3... Done!
+Logging 'destinyuser' to Steam3... Please enter your 2 factor auth code from your authenticator app: ".to_lowercase();
+
+        let res = inspect_depot_auth(&output, "credentials", false, false, false);
+        match res {
+            AuthInspectionResult::SteamGuardPrompt { guard_type, message } => {
+                assert_eq!(guard_type, "code");
+                assert!(message.to_lowercase().contains("authenticator"));
+            }
+            other => panic!("Expected SteamGuardPrompt with authenticator, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_inspect_depot_auth_success() {
+        // QR login success
+        let qr_out = "Connecting to Steam3... Done!
+Logging in with QR code... Done!
+Got account info".to_lowercase();
+        assert_eq!(
+            inspect_depot_auth(&qr_out, "qr", false, false, false),
+            AuthInspectionResult::AuthSuccess
+        );
+
+        // Password login success (no 2FA)
+        let pass_out = "Connecting to Steam3... Done!
+Logging 'destinyuser' to Steam3... Done!
+Got login token".to_lowercase();
+        assert_eq!(
+            inspect_depot_auth(&pass_out, "credentials", false, false, false),
+            AuthInspectionResult::AuthSuccess
+        );
+
+        // Password + Steam Guard success
+        let guard_out = "Connecting to Steam3... Done!
+Logging 'destinyuser' to Steam3... Done!
+Got account info
+Requesting app info...".to_lowercase();
+        assert_eq!(
+            inspect_depot_auth(&guard_out, "credentials", false, false, false),
+            AuthInspectionResult::AuthSuccess
+        );
+    }
+
+    #[test]
+    fn test_inspect_depot_auth_errors() {
+        let err_pass = "Failed to authenticate with Steam: InvalidPassword".to_lowercase();
+        match inspect_depot_auth(&err_pass, "credentials", false, false, false) {
+            AuthInspectionResult::AuthError { error_type, .. } => {
+                assert_eq!(error_type, "invalid_password");
+            }
+            other => panic!("Expected AuthError invalid_password, got {:?}", other),
+        }
+
+        let err_2fa = "Failed to authenticate with Steam: TwoFactorCodeMismatch".to_lowercase();
+        match inspect_depot_auth(&err_2fa, "credentials", false, false, false) {
+            AuthInspectionResult::AuthError { error_type, .. } => {
+                assert_eq!(error_type, "2fa_mismatch");
+            }
+            other => panic!("Expected AuthError 2fa_mismatch, got {:?}", other),
+        }
     }
 }

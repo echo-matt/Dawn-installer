@@ -912,6 +912,90 @@ pub fn update_dawn_language(install_root: &str, language_code: &str) {
     }
 }
 
+pub fn ensure_launch_scripts(game_root: &Path) {
+    #[cfg(windows)]
+    {
+        let cmd_path = game_root.join("launch-destiny.cmd");
+        if !cmd_path.exists() {
+            let script = "@echo off\r\ncd /d \"%~dp0\"\r\nset DAWN_FOREST_BASELINE=1\r\nstart \"\" \"%~dp0destiny2.exe\" %*\r\n";
+            let _ = fs::write(&cmd_path, script);
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let sh_path = game_root.join("launch-destiny.sh");
+        if !sh_path.exists() {
+            let script = r#"#!/usr/bin/env sh
+# Dawn Launcher - Destiny 2 (Build 86657) Launch Script
+set -e
+GAME_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$GAME_DIR"
+
+export DAWN_FOREST_BASELINE=1
+
+# Check for steam-run (recommended on NixOS / SteamOS)
+RUNNER=""
+if command -v steam-run >/dev/null 2>&1; then
+    RUNNER="steam-run"
+elif [ -x "/run/current-system/sw/bin/steam-run" ]; then
+    RUNNER="/run/current-system/sw/bin/steam-run"
+fi
+
+# Locate Proton or Wine
+PROTON_CANDIDATE=""
+for cand in \
+    "$HOME/.local/share/Steam/steamapps/common/Proton - Experimental/proton" \
+    "$HOME/.local/share/Steam/steamapps/common/Proton 9.0/proton" \
+    "$HOME/.local/share/Steam/steamapps/common/Proton 8.0/proton" \
+    "$HOME/.steam/steam/steamapps/common/Proton - Experimental/proton" \
+    "$HOME/.steam/steam/steamapps/common/Proton 9.0/proton" \
+    "$HOME/.steam/root/steamapps/common/Proton - Experimental/proton"; do
+    if [ -f "$cand" ]; then
+        PROTON_CANDIDATE="$cand"
+        break
+    fi
+done
+
+if [ -n "$PROTON_CANDIDATE" ]; then
+    STEAM_ROOT="$(dirname "$(dirname "$(dirname "$(dirname "$PROTON_CANDIDATE")")")")"
+    export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_ROOT"
+    export STEAM_COMPAT_DATA_PATH="$STEAM_ROOT/steamapps/compatdata/1085660"
+    mkdir -p "$STEAM_COMPAT_DATA_PATH"
+
+    echo "[DAWN] Launching via Proton: $PROTON_CANDIDATE"
+    if [ -n "$RUNNER" ]; then
+        exec $RUNNER "$PROTON_CANDIDATE" run "$GAME_DIR/destiny2.exe" "$@"
+    else
+        exec "$PROTON_CANDIDATE" run "$GAME_DIR/destiny2.exe" "$@"
+    fi
+elif command -v wine >/dev/null 2>&1; then
+    echo "[DAWN] Launching via Wine"
+    if [ -n "$RUNNER" ]; then
+        exec $RUNNER wine "$GAME_DIR/destiny2.exe" "$@"
+    else
+        exec wine "$GAME_DIR/destiny2.exe" "$@"
+    fi
+else
+    echo "[ERROR] Neither Proton nor Wine was found in standard locations or PATH."
+    echo "Please install Proton via Steam or install Wine, or edit this script to specify your runner."
+    exit 1
+fi
+"#;
+            let _ = fs::write(&sh_path, script);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = fs::metadata(&sh_path) {
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o755);
+                    let _ = fs::set_permissions(&sh_path, perms);
+                }
+            }
+        }
+    }
+}
+
 pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<String>) -> CommandResult {
     let trimmed = game_root.trim().trim_matches('"');
     let mut p = PathBuf::from(trimmed);
@@ -959,6 +1043,8 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
             count: None,
         };
     }
+
+    ensure_launch_scripts(&p);
 
     #[cfg(windows)]
     {
@@ -1061,4 +1147,35 @@ pub fn open_docs() -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ensure_launch_scripts() {
+        let temp_dir = std::env::temp_dir().join(format!("dawn_test_scripts_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        ensure_launch_scripts(&temp_dir);
+
+        #[cfg(windows)]
+        {
+            let cmd_path = temp_dir.join("launch-destiny.cmd");
+            assert!(cmd_path.is_file(), "launch-destiny.cmd should be created on Windows");
+            let content = fs::read_to_string(&cmd_path).unwrap();
+            assert!(content.contains("destiny2.exe"));
+        }
+
+        #[cfg(not(windows))]
+        {
+            let sh_path = temp_dir.join("launch-destiny.sh");
+            assert!(sh_path.is_file(), "launch-destiny.sh should be created on Linux");
+            let content = fs::read_to_string(&sh_path).unwrap();
+            assert!(content.contains("destiny2.exe"));
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }

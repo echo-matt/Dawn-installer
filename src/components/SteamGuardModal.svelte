@@ -53,7 +53,7 @@
               id="steam-guard-code-input"
               class="auth-input guard-input"
               placeholder="e.g. W8X4R"
-              maxlength="6"
+              maxlength="10"
               autocomplete="one-time-code"
               spellcheck="false"
               bind:value={codeInput}

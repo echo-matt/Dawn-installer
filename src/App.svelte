@@ -293,8 +293,10 @@
       isAuthSubmitting = false;
 
       if (res.cancelled || !isOperationRunning) {
-        hideProgress();
-        showToast('Download cancelled.');
+        if (!isAuthModalOpen) {
+          hideProgress();
+          showToast('Download cancelled.');
+        }
       } else if (res.success && isOperationRunning) {
         progressPercent = 100;
         progressTitle = 'Installation Complete!';
@@ -385,6 +387,7 @@
 
   async function handleGuardSubmit(code) {
     isGuardModalOpen = false;
+    progressDetails = 'Submitting verification code to Steam...';
     await api.sendConsoleInput(code);
   }
 
@@ -521,6 +524,20 @@
       isAuthModalOpen = false;
     });
 
+    const unlistenAuthSuccess = await api.onAuthSuccess(() => {
+      isAuthModalOpen = false;
+      isGuardModalOpen = false;
+      isAuthSubmitting = false;
+      authErrorMessage = '';
+      guardErrorMessage = '';
+      if (isOperationRunning) {
+        progressVisible = true;
+        progressTitle = 'Signing in to Steam';
+        progressStepDesc = `Account Authenticated • Language: ${selectedLanguage.toUpperCase()}`;
+        progressDetails = 'Retrieving game manifests from Steam servers...';
+      }
+    });
+
     const unlistenAuthError = await api.onAuthError((payload) => {
       isAuthSubmitting = false;
       const msg = payload?.message || 'Steam authentication failed. Please check your credentials.';
@@ -543,6 +560,7 @@
       if (typeof unlistenProgress === 'function') unlistenProgress();
       if (typeof unlistenQr === 'function') unlistenQr();
       if (typeof unlistenSteamGuard === 'function') unlistenSteamGuard();
+      if (typeof unlistenAuthSuccess === 'function') unlistenAuthSuccess();
       if (typeof unlistenAuthError === 'function') unlistenAuthError();
       if (typeof unlistenInstallerProg === 'function') unlistenInstallerProg();
     };
