@@ -7,10 +7,23 @@ use tauri::{AppHandle, Emitter};
 static LOG_BUFFER: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 pub fn get_log_dir() -> PathBuf {
-    let base = std::env::var("LOCALAPPDATA")
-        .or_else(|_| std::env::var("APPDATA"))
-        .unwrap_or_else(|_| "C:\\AppData\\Local".to_string());
-    PathBuf::from(base).join("DawnInstaller").join("logs")
+    #[cfg(windows)]
+    {
+        let base = std::env::var("LOCALAPPDATA")
+            .or_else(|_| std::env::var("APPDATA"))
+            .unwrap_or_else(|_| "C:\\AppData\\Local".to_string());
+        PathBuf::from(base).join("DawnInstaller").join("logs")
+    }
+    #[cfg(not(windows))]
+    {
+        let base = std::env::var("XDG_STATE_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                PathBuf::from(home).join(".local").join("state")
+            });
+        PathBuf::from(base).join("DawnInstaller").join("logs")
+    }
 }
 
 pub fn get_log_file_path() -> PathBuf {

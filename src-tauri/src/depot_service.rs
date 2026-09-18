@@ -58,6 +58,21 @@ pub fn get_tools_dir() -> PathBuf {
 }
 
 pub async fn ensure_depot_downloader(app: &AppHandle) -> Result<PathBuf, String> {
+    let exe_path = std::env::var_os("PATH").and_then(|paths| {
+        std::env::split_paths(&paths).filter_map(|dir| {
+            let exe_path = dir.join(DEPOT_DOWNLOADER_EXE);
+            if exe_path.is_file() {
+                Some(exe_path)
+            } else {
+                None
+            }
+        }).next()
+    });
+
+    if let Some(exe) = exe_path {
+        return Ok(exe);
+    }
+
     let tools_dir = get_tools_dir();
     let exe_path = tools_dir.join(DEPOT_DOWNLOADER_EXE);
 
