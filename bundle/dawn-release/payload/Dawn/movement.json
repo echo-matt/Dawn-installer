@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "distance": 7.000,
+  "virtual_key": 71,
+  "noclip_enabled": false,
+  "noclip_toggle_key": 75,
+  "sword_skate_enabled": false,
+  "fly_enabled": false,
+  "fly_toggle_key": 72,
+  "fly_speed": 67.000
+}

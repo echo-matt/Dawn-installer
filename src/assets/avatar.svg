@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b45309"/>
+      <stop offset="50%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#7c2d12"/>
+    </linearGradient>
+    <linearGradient id="skinGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fed7aa"/>
+      <stop offset="100%" stop-color="#fdba74"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Rounded Avatar Frame -->
+  <rect width="100" height="100" rx="18" fill="url(#avatarGrad)"/>
+  
+  <!-- Dark Vignette / Inner Shadow -->
+  <rect width="100" height="100" rx="18" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="4"/>
+  
+  <!-- Character Hair / Hood -->
+  <path d="M 22 75 C 20 32, 80 32, 78 75 C 75 88, 25 88, 22 75 Z" fill="#431407"/>
+  <path d="M 26 48 C 26 28, 74 28, 74 48 C 74 65, 26 65, 26 48 Z" fill="#78350f"/>
+  
+  <!-- Face -->
+  <ellipse cx="50" cy="52" rx="20" ry="22" fill="url(#skinGrad)"/>
+  
+  <!-- Bangs / Forehead Hair -->
+  <path d="M 30 42 Q 50 32 70 42 Q 62 48 50 44 Q 38 48 30 42 Z" fill="#431407"/>
+  
+  <!-- Eyes -->
+  <ellipse cx="42" cy="52" rx="3.2" ry="4" fill="#1c1917"/>
+  <ellipse cx="58" cy="52" rx="3.2" ry="4" fill="#1c1917"/>
+  <circle cx="43.2" cy="50.8" r="1.2" fill="#ffffff"/>
+  <circle cx="59.2" cy="50.8" r="1.2" fill="#ffffff"/>
+  
+  <!-- Cheeks -->
+  <ellipse cx="37" cy="57" rx="3.5" ry="2" fill="#fca5a5" opacity="0.6"/>
+  <ellipse cx="63" cy="57" rx="3.5" ry="2" fill="#fca5a5" opacity="0.6"/>
+  
+  <!-- Smile -->
+  <path d="M 46 62 Q 50 65 54 62" stroke="#78350f" stroke-width="2" stroke-linecap="round" fill="none"/>
+  
+  <!-- Collar / Shoulders -->
+  <path d="M 24 96 C 24 78, 76 78, 76 96 Z" fill="#1e293b"/>
+  <polygon points="50,78 43,89 57,89" fill="#0284c7"/>
+</svg>

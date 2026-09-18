@@ -1,0 +1,568 @@
+{
+  "format_version": 2,
+  "mission": "mercury_freeroam",
+  "profile": "mercury.freeroam.native.v1",
+  "authority_schema": "nativeOtherActivities",
+  "assets": {
+    "persistent_module": {
+      "registry": "0x80F4696A",
+      "definition": "0x80F4696A",
+      "type": 0,
+      "slot": 0
+    },
+    "vendor_portal": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5AC",
+      "type": 4,
+      "slot": 0
+    },
+    "vendor_effect_1": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5AF",
+      "type": 4,
+      "slot": 1
+    },
+    "vendor_effect_2": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5B2",
+      "type": 4,
+      "slot": 2
+    },
+    "vendor_effect_3": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5B5",
+      "type": 4,
+      "slot": 3
+    },
+    "centre_portal": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5B8",
+      "type": 4,
+      "slot": 4
+    },
+    "landing_portal": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5BB",
+      "type": 4,
+      "slot": 5
+    },
+    "pond": {
+      "registry": "0x74337EDD",
+      "definition": "0x80F5B68E",
+      "type": 1,
+      "slot": 1
+    },
+    "vance": {
+      "registry": "0x564C6ECE",
+      "definition": "0x80F5B9CC",
+      "type": 1,
+      "slot": 0
+    },
+    "vance_idle": {
+      "registry": "0x564C6ECE",
+      "definition": "0x80F5BA28",
+      "type": 42,
+      "slot": 2
+    },
+    "adventure_ascend": {
+      "registry": "0x2749BAAE",
+      "definition": "0x80F5B960",
+      "type": 4,
+      "slot": 0
+    },
+    "adventure_horde": {
+      "registry": "0x2749BAAE",
+      "definition": "0x80F5B956",
+      "type": 4,
+      "slot": 1
+    },
+    "adventure_intercept": {
+      "registry": "0x2749BAAE",
+      "definition": "0x80F5B959",
+      "type": 4,
+      "slot": 2
+    },
+    "adventure_ascend_opening": {
+      "registry": "0x08551BCF",
+      "definition": "0x80F46D67",
+      "type": 68,
+      "slot": 0
+    },
+    "adventure_horde_opening": {
+      "registry": "0x9104CE05",
+      "definition": "0x80F46D7B",
+      "type": 68,
+      "slot": 0
+    },
+    "adventure_intercept_opening": {
+      "registry": "0x3DB08419",
+      "definition": "0x80F46D8B",
+      "type": 68,
+      "slot": 0
+    },
+    "adventure_ascend_dialogue": {
+      "registry": "0x08551BCF",
+      "definition": "0x80F46D63",
+      "type": 53,
+      "slot": 2
+    },
+    "adventure_horde_dialogue": {
+      "registry": "0x9104CE05",
+      "definition": "0x80F46D77",
+      "type": 53,
+      "slot": 2
+    },
+    "adventure_intercept_dialogue": {
+      "registry": "0x3DB08419",
+      "definition": "0x80F46D8F",
+      "type": 53,
+      "slot": 2
+    },
+    "adventure_forest_source": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5BE",
+      "type": 4,
+      "slot": 6
+    },
+    "adventure_forest_destination": {
+      "registry": "0xF25B938B",
+      "definition": "0x80F5E5C1",
+      "type": 4,
+      "slot": 7
+    }
+  },
+  "bindings": {
+    "start_services": {
+      "capability": "persistent.start",
+      "operation": "mechanic",
+      "asset": "persistent_module",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vendor_portal": {
+      "capability": "vendor_portal",
+      "operation": "device",
+      "asset": "vendor_portal",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vendor_effect_1": {
+      "capability": "vendor_effect_1",
+      "operation": "device",
+      "asset": "vendor_effect_1",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vendor_effect_2": {
+      "capability": "vendor_effect_2",
+      "operation": "device",
+      "asset": "vendor_effect_2",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vendor_effect_3": {
+      "capability": "vendor_effect_3",
+      "operation": "device",
+      "asset": "vendor_effect_3",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "centre_portal": {
+      "capability": "centre_portal",
+      "operation": "device",
+      "asset": "centre_portal",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "landing_portal": {
+      "capability": "landing_portal",
+      "operation": "device",
+      "asset": "landing_portal",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "pond": {
+      "capability": "pond",
+      "operation": "population",
+      "asset": "pond",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vance": {
+      "capability": "vance",
+      "operation": "population",
+      "asset": "vance",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "vance_idle": {
+      "capability": "vance.idle",
+      "operation": "mechanic",
+      "asset": "vance_idle",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_ascend": {
+      "capability": "adventure.ascend.beacon",
+      "operation": "device",
+      "asset": "adventure_ascend",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_horde": {
+      "capability": "adventure.horde.beacon",
+      "operation": "device",
+      "asset": "adventure_horde",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_intercept": {
+      "capability": "adventure.intercept.beacon",
+      "operation": "device",
+      "asset": "adventure_intercept",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_ascend_opening": {
+      "capability": "adventure.ascend.opening",
+      "operation": "objective",
+      "asset": "adventure_ascend_opening",
+      "argument": 3387213206,
+      "wait": "nativeReady"
+    },
+    "adventure_horde_opening": {
+      "capability": "adventure.horde.opening",
+      "operation": "objective",
+      "asset": "adventure_horde_opening",
+      "argument": 3387213206,
+      "wait": "nativeReady"
+    },
+    "adventure_intercept_opening": {
+      "capability": "adventure.intercept.opening",
+      "operation": "objective",
+      "asset": "adventure_intercept_opening",
+      "argument": 3387213206,
+      "wait": "nativeReady"
+    },
+    "adventure_ascend_dialogue": {
+      "capability": "adventure.ascend.dialogue",
+      "operation": "dialogue",
+      "asset": "adventure_ascend_dialogue",
+      "argument": 2582299252,
+      "wait": "nativeReady"
+    },
+    "adventure_horde_dialogue": {
+      "capability": "adventure.horde.dialogue",
+      "operation": "dialogue",
+      "asset": "adventure_horde_dialogue",
+      "argument": 4088647418,
+      "wait": "nativeReady"
+    },
+    "adventure_intercept_dialogue": {
+      "capability": "adventure.intercept.dialogue",
+      "operation": "dialogue",
+      "asset": "adventure_intercept_dialogue",
+      "argument": 4039526318,
+      "wait": "nativeReady"
+    },
+    "adventure_forest_source": {
+      "capability": "adventure.forest.source",
+      "operation": "device",
+      "asset": "adventure_forest_source",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_forest_destination": {
+      "capability": "adventure.forest.destination",
+      "operation": "device",
+      "asset": "adventure_forest_destination",
+      "argument": 1,
+      "wait": "requested"
+    },
+    "adventure_forest_permission": {
+      "capability": "adventure.forest.permission",
+      "operation": "traversal",
+      "asset": "adventure_forest_source",
+      "argument": 3569676674,
+      "wait": "requested"
+    }
+  },
+  "graphs": {
+    "entry": {
+      "name": "Start persistent free-roam services",
+      "domain": "composition",
+      "steps": [
+        {
+          "id": "activate",
+          "after": [],
+          "commands": [
+            {
+              "id": "services",
+              "binding": "start_services"
+            }
+          ]
+        }
+      ],
+      "receipts": {}
+    },
+    "lighthouse": {
+      "name": "Lighthouse native startup",
+      "domain": "nativeActivity",
+      "steps": [
+        {
+          "id": "portals",
+          "after": [],
+          "commands": [
+            {
+              "id": "vendor_portal",
+              "binding": "vendor_portal"
+            },
+            {
+              "id": "vendor_effect_1",
+              "binding": "vendor_effect_1"
+            },
+            {
+              "id": "vendor_effect_2",
+              "binding": "vendor_effect_2"
+            },
+            {
+              "id": "vendor_effect_3",
+              "binding": "vendor_effect_3"
+            },
+            {
+              "id": "centre_portal",
+              "binding": "centre_portal"
+            },
+            {
+              "id": "landing_portal",
+              "binding": "landing_portal"
+            }
+          ]
+        },
+        {
+          "id": "population",
+          "after": [
+            "portals"
+          ],
+          "commands": [
+            {
+              "id": "pond",
+              "binding": "pond"
+            },
+            {
+              "id": "vance",
+              "binding": "vance"
+            },
+            {
+              "id": "vance_idle",
+              "binding": "vance_idle"
+            }
+          ]
+        },
+        {
+          "id": "adventures",
+          "after": [
+            "portals"
+          ],
+          "commands": [
+            {
+              "id": "adventure_ascend",
+              "binding": "adventure_ascend"
+            },
+            {
+              "id": "adventure_horde",
+              "binding": "adventure_horde"
+            },
+            {
+              "id": "adventure_intercept",
+              "binding": "adventure_intercept"
+            }
+          ]
+        }
+      ],
+      "receipts": {}
+    },
+    "adventure_ascend_opening": {
+      "name": "Up and Up opening objective and conversation and Forest gateway",
+      "domain": "adventureOpening",
+      "steps": [
+        {
+          "id": "opening",
+          "after": [],
+          "commands": [
+            {
+              "id": "objective",
+              "binding": "adventure_ascend_opening"
+            },
+            {
+              "id": "dialogue",
+              "binding": "adventure_ascend_dialogue"
+            }
+          ]
+        },
+        {
+          "id": "gateway",
+          "after": [
+            "opening"
+          ],
+          "commands": [
+            {
+              "id": "gateway_source",
+              "binding": "adventure_forest_source"
+            },
+            {
+              "id": "gateway_destination",
+              "binding": "adventure_forest_destination"
+            },
+            {
+              "id": "gateway_permission",
+              "binding": "adventure_forest_permission"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "opening_ready": "objective",
+        "dialogue_submitted": "dialogue"
+      }
+    },
+    "adventure_horde_opening": {
+      "name": "Bug in the System opening objective and conversation and Forest gateway",
+      "domain": "adventureOpening",
+      "steps": [
+        {
+          "id": "opening",
+          "after": [],
+          "commands": [
+            {
+              "id": "objective",
+              "binding": "adventure_horde_opening"
+            },
+            {
+              "id": "dialogue",
+              "binding": "adventure_horde_dialogue"
+            }
+          ]
+        },
+        {
+          "id": "gateway",
+          "after": [
+            "opening"
+          ],
+          "commands": [
+            {
+              "id": "gateway_source",
+              "binding": "adventure_forest_source"
+            },
+            {
+              "id": "gateway_destination",
+              "binding": "adventure_forest_destination"
+            },
+            {
+              "id": "gateway_permission",
+              "binding": "adventure_forest_permission"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "opening_ready": "objective",
+        "dialogue_submitted": "dialogue"
+      }
+    },
+    "adventure_intercept_opening": {
+      "name": "The Runner opening objective and conversation and Forest gateway",
+      "domain": "adventureOpening",
+      "steps": [
+        {
+          "id": "opening",
+          "after": [],
+          "commands": [
+            {
+              "id": "objective",
+              "binding": "adventure_intercept_opening"
+            },
+            {
+              "id": "dialogue",
+              "binding": "adventure_intercept_dialogue"
+            }
+          ]
+        },
+        {
+          "id": "gateway",
+          "after": [
+            "opening"
+          ],
+          "commands": [
+            {
+              "id": "gateway_source",
+              "binding": "adventure_forest_source"
+            },
+            {
+              "id": "gateway_destination",
+              "binding": "adventure_forest_destination"
+            },
+            {
+              "id": "gateway_permission",
+              "binding": "adventure_forest_permission"
+            }
+          ]
+        }
+      ],
+      "receipts": {
+        "opening_ready": "objective",
+        "dialogue_submitted": "dialogue"
+      }
+    }
+  },
+  "roles": {
+    "persistent": "lighthouse",
+    "adventure_ascend": "adventure_ascend_opening",
+    "adventure_horde": "adventure_horde_opening",
+    "adventure_intercept": "adventure_intercept_opening"
+  },
+  "entry": "entry",
+  "modules": [
+    "persistent"
+  ],
+  "observations": [],
+  "parameters": {
+    "pond_initial_count": 1,
+    "vance_count": 1,
+    "ambient_vex_probe_count": 1,
+    "ambient_cabal_primary_probe_count": 0,
+    "freeroam_population_enabled": 1,
+    "freeroam_respawn_ms": 30000,
+    "freeroam_normal_patrol_count": 1,
+    "freeroam_large_patrol_count": 1,
+    "faction_war_enabled": 1,
+    "faction_war_interwave_ms": 8000,
+    "faction_war_wave_1_count": 2,
+    "faction_war_wave_2_count": 3,
+    "faction_war_wave_3_count": 4,
+    "faction_war_wave_4_count": 5,
+    "public_event_rally_probe": 1,
+    "public_event_opening_probe": 0,
+    "public_event_intro_delay_ms": 5250,
+    "public_event_incoming_cue_delay_ms": 1750,
+    "public_event_incoming_duration_ms": 180000,
+    "public_event_voice_delay_ms": 9750,
+    "public_event_opening_duration_ms": 240000,
+    "public_event_island_duration_ms": 120000,
+    "public_event_cannon_rotation_delay_ms": 5000,
+    "public_event_cannon_activation_delay_ms": 7000,
+    "host.tick_hz": 30
+  },
+  "presentation": {
+    "dialogue": {
+      "bank": "0x00000000",
+      "rows": [],
+      "objective_cues": [],
+      "dispatch_timeout_ms": 100,
+      "spacing_ms": 0
+    },
+    "cue_sets": {},
+    "action_sets": {},
+    "binding_tables": {}
+  }
+}
