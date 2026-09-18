@@ -233,39 +233,74 @@ pub fn parse_qr_from_bytes(raw: &[u8]) -> Option<String> {
         byte_lines.push(&after[curr..]);
     }
 
-    let n = 37;
-    let cell_size = 6;
-    let size = n * cell_size;
-
-    // Look for the first line that is a QR code row (length >= 74, beginning with top quiet zone)
-    let mut start_idx = None;
-    for (i, line) in byte_lines.iter().enumerate() {
-        if line.len() >= 74 {
-            start_idx = Some(i);
-            break;
+    // QRCoder (used by DepotDownloader's DisplayQrCode => AsciiQRCode.GetLineByLineGraphic(1, drawQuietZones:true))
+    // renders every QR module as two characters: dark="██", light="  ".
+    // The on-disk byte width of those characters depends on the console output encoding:
+    //   - Windows OEM code page: '█' = single byte 0xDB  (module = 2x0xDB)
+    //   - Linux/macOS UTF-8:     '█' = 0xE2 0x96 0x88   (module = 2x that sequence)
+    // So we detect tokens by their actual byte length rather than assuming 2 bytes/module,
+    // making the parser encoding-agnostic.
+    fn token_len(line: &[u8]) -> usize {
+        if line.len() >= 3 && line[0] == 0xE2 && line[1] == 0x96 && line[2] == 0x88 {
+            3
+        } else {
+            1
         }
     }
+    fn is_dark_token(line: &[u8]) -> bool {
+        if line[0] == 0xDB || line[0] == b'#' {
+            return true;
+        }
+        line.len() >= 3 && line[0] == 0xE2 && line[1] == 0x96 && line[2] == 0x88
+    }
+    // Decode one rendered row into per-module dark flags, consuming two chars per module.
+    // Modules are char pairs; because a UTF-8 block is 3 bytes and a space is 1 byte,
+    // consuming exactly two "tokens" per module always lands on a module boundary.
+    fn decode_row(line: &[u8]) -> Option<Vec<bool>> {
+        if line.is_empty() {
+            return None;
+        }
+        let mut modules = Vec::new();
+        let mut i = 0;
+        while i < line.len() {
+            let dark = is_dark_token(&line[i..]);
+            i += token_len(&line[i..]);
+            if i < line.len() {
+                i += token_len(&line[i..]);
+            }
+            modules.push(dark);
+        }
+        Some(modules)
+    }
 
-    let start = start_idx?;
+    // n = 37 modules square (version-3 QR incl. 4-module quiet zones baked into the matrix).
+    // Find the first row that is a complete 37-module line (a fully-received top quiet zone).
+    let n = 37;
+    let start_idx = byte_lines
+        .iter()
+        .position(|l| decode_row(l).map(|m| m.len() >= n).unwrap_or(false))?;
 
-    // Must have all 37 rows completely received before generating an SVG
+    // Must have all n rows completely received before generating an SVG
     // (Prevents emitting incomplete rows which caused rapid flickering)
-    if byte_lines.len() < start + n {
+    if byte_lines.len() < start_idx + n {
         return None;
     }
+
+    let cell_size = 6;
+    let size = n * cell_size;
 
     let mut rects = String::new();
     let mut dark_modules = 0;
 
-    for (r, line) in byte_lines[start..start + n].iter().enumerate() {
-        if line.len() < 74 {
+    for (r, line) in byte_lines[start_idx..start_idx + n].iter().enumerate() {
+        let modules = decode_row(line)?;
+        if modules.len() < n {
             // Incomplete row still buffering
             return None;
         }
-        for col in (0..74).step_by(2) {
-            let b = line[col];
-            if b == 0xDB || b == 219 || b == b'#' {
-                let x = (col / 2) * cell_size;
+        for (col, dark) in modules.iter().take(n).enumerate() {
+            if *dark {
+                let x = col * cell_size;
                 let y = r * cell_size;
                 rects.push_str(&format!(
                     r##"<rect x="{}" y="{}" width="{}" height="{}" fill="#0f172a" />"##,
@@ -855,13 +890,17 @@ mod tests {
     #[test]
     fn test_parse_qr_from_bytes() {
         let mut data = Vec::new();
-        data.extend_from_slice(b"Connecting to Steam3... Done!\r\nLogging in with QR code...\r\n");
-        data.extend_from_slice(b"Use the Steam Mobile App to sign in with this QR code:\r\n");
+        data.extend_from_slice(b"Connecting to Steam3... Done!
+Logging in with QR code...
+");
+        data.extend_from_slice(b"Use the Steam Mobile App to sign in with this QR code:
+");
 
         // 4 quiet zone rows of 74 spaces
         for _ in 0..4 {
             data.extend_from_slice(&[b' '; 74]);
-            data.extend_from_slice(b"\r\n");
+            data.extend_from_slice(b"
+");
         }
 
         // 29 data rows with 0xDB (full blocks)
@@ -871,17 +910,81 @@ mod tests {
                 row[c] = 0xDB;
             }
             data.extend_from_slice(&row);
-            data.extend_from_slice(b"\r\n");
+            data.extend_from_slice(b"
+");
         }
 
         // 4 quiet zone rows of 74 spaces
         for _ in 0..4 {
             data.extend_from_slice(&[b' '; 74]);
-            data.extend_from_slice(b"\r\n");
+            data.extend_from_slice(b"
+");
         }
 
         let result = parse_qr_from_bytes(&data);
         assert!(result.is_some(), "Expected QR code SVG to be generated");
+        let svg = result.unwrap();
+        assert!(svg.starts_with("<svg"), "Output must be an SVG element");
+        assert!(svg.contains(r###"fill="#ffffff""###), "SVG must contain white background");
+        assert!(svg.contains(r###"fill="#0f172a""###), "SVG must contain dark module rects");
+    }
+
+    #[test]
+    fn test_parse_qr_from_bytes_linux_utf8() {
+        // QRCoder emits the same 37x37 matrix on Linux, but the dark module char '█'
+        // is encoded as UTF-8 (0xE2 0x96 0x88) instead of the Windows OEM single byte 0xDB,
+        // and lines end with LF only (no CR). This simulates real DepotDownloader output
+        // piped from a Linux console.
+        let mut data = Vec::new();
+        data.extend_from_slice(b"Connecting to Steam3... Done!
+Logging in with QR code...
+");
+        data.extend_from_slice(b"Use the Steam Mobile App to sign in with this QR code:
+");
+
+        // A module is QRCoder's "██" (dark = 2x [0xE2 0x96 0x88]) or "  " (light = 2x space).
+        let dark_module: &[u8] = &[0xE2, 0x96, 0x88, 0xE2, 0x96, 0x88]; // "██"
+        let light_module: &[u8] = &[b' ', b' ']; // "  "
+
+        // 4 quiet zone rows (all light)
+        for _ in 0..4 {
+            let mut row = Vec::new();
+            for _ in 0..37 {
+                row.extend_from_slice(light_module);
+            }
+            row.extend_from_slice(b"
+");
+            data.extend_from_slice(&row);
+        }
+
+        // 29 data rows: alternate dark/light modules (even index = dark)
+        for _ in 0..29 {
+            let mut row = Vec::new();
+            for m in 0..37 {
+                if m % 2 == 0 {
+                    row.extend_from_slice(dark_module);
+                } else {
+                    row.extend_from_slice(light_module);
+                }
+            }
+            row.extend_from_slice(b"
+");
+            data.extend_from_slice(&row);
+        }
+
+        // 4 quiet zone rows (all light)
+        for _ in 0..4 {
+            let mut row = Vec::new();
+            for _ in 0..37 {
+                row.extend_from_slice(light_module);
+            }
+            row.extend_from_slice(b"
+");
+            data.extend_from_slice(&row);
+        }
+
+        let result = parse_qr_from_bytes(&data);
+        assert!(result.is_some(), "Expected QR code SVG to be generated for Linux UTF-8 output");
         let svg = result.unwrap();
         assert!(svg.starts_with("<svg"), "Output must be an SVG element");
         assert!(svg.contains(r###"fill="#ffffff""###), "SVG must contain white background");

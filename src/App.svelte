@@ -67,7 +67,21 @@
     }
     const cleanClient = dawnVersion.trim().toLowerCase().replace(/^v/, '');
     const cleanLatest = latestDawnVersion.trim().toLowerCase().replace(/^v/, '');
-    return cleanClient !== cleanLatest;
+    if (cleanClient === cleanLatest) {
+      return false;
+    }
+    // Handle hotfix and payload naming variants (e.g. 0.1.3-omega-fix and 0.1.3-hotfix)
+    const clientBase = cleanClient.split('-')[0];
+    const latestBase = cleanLatest.split('-')[0];
+    if (clientBase && latestBase && clientBase === latestBase) {
+      if (
+        (cleanClient.includes('fix') && cleanLatest.includes('hotfix')) ||
+        (cleanClient.includes('hotfix') && cleanLatest.includes('fix'))
+      ) {
+        return false;
+      }
+    }
+    return true;
   });
 
   let installButtonText = $derived(
@@ -95,7 +109,11 @@
     const preflight = await api.validatePreflight(folderPath);
     hasGameInstalled = Boolean(preflight.has_game);
     hasDawnInstalled = Boolean(preflight.has_dawn);
-    dawnVersion = preflight.dawn_version || null;
+    if (preflight.dawn_version) {
+      dawnVersion = preflight.dawn_version;
+    } else if (!dawnVersion) {
+      dawnVersion = null;
+    }
 
     if (!latestDawnVersion) {
       api.getLatestDawnVersion().then((v) => {
@@ -168,6 +186,9 @@
       const res = await api.installDawn(selectedFolder);
       if (res.success) {
         showToast(isDawnUpdateAvailable ? 'Dawn updated successfully!' : 'Dawn installed successfully!');
+        if (latestDawnVersion) {
+          dawnVersion = latestDawnVersion;
+        }
         await checkFolderStatus(selectedFolder);
       } else {
         showToast(res.error || res.message || 'Dawn update failed');

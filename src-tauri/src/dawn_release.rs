@@ -15,6 +15,9 @@ pub struct GitHubRelease {
     pub tag_name: String,
     pub name: Option<String>,
     pub html_url: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
     pub assets: Vec<GitHubAsset>,
 }
 
@@ -46,10 +49,14 @@ pub fn get_releases_dir() -> PathBuf {
 }
 
 pub fn is_valid_release_dir(dir: &Path) -> bool {
-    dir.is_dir()
-        && dir.join("release.json").exists()
-        && (dir.join("payload").join("steam_api64.dll").exists()
-            || dir.join("steam_api64.dll").exists())
+    if !dir.is_dir() {
+        return false;
+    }
+    let has_dll = dir.join("payload").join("steam_api64.dll").exists()
+        || dir.join("steam_api64.dll").exists()
+        || dir.join("bin").join("x64").join("steam_api64.dll").exists();
+    let has_meta = dir.join("release.json").exists() || dir.join(".dawn").join("release.json").exists();
+    has_dll && has_meta
 }
 
 pub fn get_latest_cached_release_dir() -> Option<PathBuf> {
@@ -107,6 +114,7 @@ pub async fn resolve_tag_from_web_redirect() -> Result<GitHubRelease, String> {
                 tag_name: tag_clean,
                 name: Some(format!("Dawn {}", version_num)),
                 html_url: Some(loc_str.to_string()),
+                body: None,
                 assets: vec![
                     GitHubAsset {
                         name: zip_name,
@@ -125,6 +133,51 @@ pub async fn resolve_tag_from_web_redirect() -> Result<GitHubRelease, String> {
     Err("Could not resolve tag from GitHub web redirect".to_string())
 }
 
+pub fn extract_assets_from_markdown_body(body: &str, assets: &mut Vec<GitHubAsset>) {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        let mut rem = trimmed;
+        while let Some(start_bracket) = rem.find('[') {
+            if let Some(end_bracket_offset) = rem[start_bracket..].find(']') {
+                let end_bracket = start_bracket + end_bracket_offset;
+                if rem.len() > end_bracket + 1 && rem.as_bytes()[end_bracket + 1] == b'(' {
+                    if let Some(end_paren_offset) = rem[end_bracket + 2..].find(')') {
+                        let end_paren = end_bracket + 2 + end_paren_offset;
+                        let label = rem[start_bracket + 1..end_bracket].trim();
+                        let url = rem[end_bracket + 2..end_paren].trim();
+                        if url.starts_with("http") {
+                            let label_lower = label.to_lowercase();
+                            let url_lower = url.to_lowercase();
+                            if label_lower.ends_with(".zip")
+                                || label_lower.ends_with(".sha256")
+                                || label_lower.contains("sha256")
+                                || label_lower.contains("checksum")
+                                || url_lower.ends_with(".zip")
+                            {
+                                let filename = if label_lower.ends_with(".zip") || label_lower.contains("sha256") {
+                                    label.to_string()
+                                } else {
+                                    url.rsplit('/').next().unwrap_or("release.zip").to_string()
+                                };
+                                if !assets.iter().any(|a| a.browser_download_url == url) {
+                                    assets.push(GitHubAsset {
+                                        name: filename,
+                                        size: 0,
+                                        browser_download_url: url.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        rem = &rem[end_paren + 1..];
+                        continue;
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
 pub async fn fetch_latest_release() -> Result<GitHubRelease, String> {
     let client = reqwest::Client::builder()
         .user_agent("DawnLauncher/1.0 (Windows NT 10.0; Win64; x64)")
@@ -139,7 +192,16 @@ pub async fn fetch_latest_release() -> Result<GitHubRelease, String> {
 
     if let Ok(response) = api_res {
         if response.status().is_success() {
-            if let Ok(release) = response.json::<GitHubRelease>().await {
+            if let Ok(mut release) = response.json::<GitHubRelease>().await {
+                let has_zip = release.assets.iter().any(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".zip") && !n.ends_with(".zip.sha256") && !n.contains("source")
+                });
+                if !has_zip {
+                    if let Some(body) = &release.body {
+                        extract_assets_from_markdown_body(body, &mut release.assets);
+                    }
+                }
                 return Ok(release);
             }
         }
@@ -173,14 +235,20 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
             let zip_asset = release
                 .assets
                 .iter()
-                .find(|a| a.name.ends_with(".zip") && !a.name.ends_with(".zip.sha256"))
+                .find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".zip") && !n.ends_with(".zip.sha256") && !n.contains("source")
+                })
                 .cloned()
-                .ok_or_else(|| format!("Release {} does not contain a .zip asset", tag))?;
+                .ok_or_else(|| format!("Release {} does not contain a player .zip asset", tag))?;
 
             let sha_asset = release
                 .assets
                 .iter()
-                .find(|a| a.name.ends_with(".zip.sha256"))
+                .find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".sha256") || n.contains("sha256") || n.contains("checksum")
+                })
                 .cloned();
 
             let releases_dir = get_releases_dir();
@@ -195,15 +263,16 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
             }
 
             let mb = (zip_asset.size as f64) / (1024.0 * 1024.0);
+            let size_desc = if mb > 0.1 { format!(" ({:.2} MB)", mb) } else { String::new() };
             let _ = app.emit(
                 "depot:output",
-                format!("[DAWN] Downloading {} ({:.2} MB)...\r\n", zip_asset.name, mb),
+                format!("[DAWN] Downloading {}{}...\r\n", zip_asset.name, size_desc),
             );
             let _ = app.emit(
                 "installer:progress",
                 ProgressPayload {
                     percent: 96,
-                    status: format!("Downloading Dawn {} ({:.1} MB)...", tag, mb),
+                    status: format!("Downloading Dawn {}{}...", tag, size_desc),
                 },
             );
 
@@ -219,7 +288,19 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
                 if let Ok(resp) = client.get(&sha.browser_download_url).send().await {
                     if resp.status().is_success() {
                         if let Ok(text) = resp.text().await {
-                            text.split_whitespace().next().map(|s| s.to_lowercase())
+                            let mut found = None;
+                            for line in text.lines() {
+                                let parts: Vec<&str> = line.split_whitespace().collect();
+                                if parts.len() >= 2 {
+                                    let hash = parts[0];
+                                    let fname = parts[1].trim_start_matches('*');
+                                    if fname == zip_asset.name {
+                                        found = Some(hash.to_lowercase());
+                                        break;
+                                    }
+                                }
+                            }
+                            found.or_else(|| text.split_whitespace().next().map(|s| s.to_lowercase()))
                         } else {
                             None
                         }
@@ -329,6 +410,28 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
             };
 
             let _ = tokio::fs::remove_file(&zip_path).await;
+
+            // Ensure target_dir has release.json recording tag_name and installed_tag
+            let rel_path = target_dir.join("release.json");
+            if !rel_path.exists() {
+                let minimal = serde_json::json!({
+                    "schema": 1,
+                    "release": tag,
+                    "tag_name": tag,
+                    "installed_tag": tag,
+                    "gameBuild": 86657,
+                    "runtimeDirectory": "Dawn"
+                });
+                let _ = fs::write(&rel_path, serde_json::to_string_pretty(&minimal).unwrap_or_default());
+            } else if let Ok(content) = fs::read_to_string(&rel_path) {
+                let mut rel_val = serde_json::from_str::<serde_json::Value>(&content)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+                if let Some(obj) = rel_val.as_object_mut() {
+                    obj.insert("tag_name".to_string(), serde_json::json!(tag));
+                    obj.insert("installed_tag".to_string(), serde_json::json!(tag));
+                }
+                let _ = fs::write(&rel_path, serde_json::to_string_pretty(&rel_val).unwrap_or_default());
+            }
 
             if !extracted || !is_valid_release_dir(&target_dir) {
                 return Err(format!(
@@ -447,13 +550,28 @@ pub async fn deploy_dawn_to_game(
         let _ = fs::copy(&steam_dll, target.join("steam_api64.dll"));
     }
 
-    // 6. Copy release metadata
+    // 6. Copy release metadata and record installed tag
+    let dawn_meta = target.join(".dawn");
+    let _ = fs::create_dir_all(&dawn_meta);
     let rel_json = release_dir.join("release.json");
-    if rel_json.exists() {
-        let dawn_meta = target.join(".dawn");
-        let _ = fs::create_dir_all(&dawn_meta);
-        let _ = fs::copy(&rel_json, dawn_meta.join("release.json"));
+    let mut rel_val = if rel_json.exists() {
+        serde_json::from_str::<serde_json::Value>(&fs::read_to_string(&rel_json).unwrap_or_default())
+            .unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    if let Some(obj) = rel_val.as_object_mut() {
+        if let Some(tag) = release_dir.file_name().and_then(|f| f.to_str()) {
+            obj.insert("tag_name".to_string(), serde_json::json!(tag));
+            obj.insert("installed_tag".to_string(), serde_json::json!(tag));
+            if !obj.contains_key("release") {
+                obj.insert("release".to_string(), serde_json::json!(tag));
+            }
+        }
     }
+    let formatted = serde_json::to_string_pretty(&rel_val).unwrap_or_default();
+    let _ = fs::write(dawn_meta.join("release.json"), &formatted);
+    let _ = fs::write(target.join("release.json"), &formatted);
 
     let _ = app.emit("depot:output", "[DAWN] Dawn mod deployed successfully!\r\n");
     Ok(())

@@ -308,9 +308,10 @@ pub fn validate_preflight(target_path: String) -> PreflightResult {
             if let Ok(content) = fs::read_to_string(&meta_path) {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
                     if let Some(ver) = parsed
-                        .get("release")
+                        .get("tag_name")
+                        .or_else(|| parsed.get("installed_tag"))
+                        .or_else(|| parsed.get("release"))
                         .or_else(|| parsed.get("version"))
-                        .or_else(|| parsed.get("tag_name"))
                         .and_then(|v| v.as_str())
                     {
                         let clean = ver.trim().trim_start_matches(['v', 'V']).to_string();
@@ -544,8 +545,12 @@ pub async fn install_dawn(app: AppHandle, game_root: String) -> CommandResult {
     let release_dir = match crate::dawn_release::ensure_latest_dawn_release(&app).await {
         Ok(dir) => dir,
         Err(e) => {
-            let _ = app.emit("depot:output", format!("[WARN] {}. Using bundled fallback...\r\n", e));
-            get_bundled_payload_dir()
+            let _ = app.emit("depot:output", format!("[WARN] {}. Checking cached or bundled fallback...\r\n", e));
+            if let Some(cached) = crate::dawn_release::get_latest_cached_release_dir() {
+                cached
+            } else {
+                get_bundled_payload_dir()
+            }
         }
     };
 
