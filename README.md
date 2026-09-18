@@ -29,7 +29,7 @@ This installer simplifies the entire process of installing, managing, and playin
 
 Head over to the [Releases](https://github.com/echo-matt/Dawn-installer/releases) page to download the latest version for your platform:
 
-- **Windows**: Download `DAWN-Setup-v1.0.1.exe` (installer), `DAWN-v1.0.1.msi`, or standalone `DAWN-v1.0.1-Portable.zip`.
+- **Windows**: Download `DAWN-Setup-v1.1.0.exe` (installer), `DAWN-v1.1.0.msi`, or standalone `DAWN-v1.1.0-Portable.zip`.
 
 ### 2. Quick Setup
 
