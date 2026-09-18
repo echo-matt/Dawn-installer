@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { patchAppImageWayland } from './patch-appimage-wayland.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,13 +70,21 @@ function run() {
   console.log(`\n[BUILD] Running Tauri release build (npm run tauri:build)...`);
   execSync('npm run tauri:build', { cwd: rootDir, stdio: 'inherit' });
 
+  const isWindows = process.platform === 'win32';
+  if (!isWindows) {
+    try {
+      patchAppImageWayland();
+    } catch (patchErr) {
+      console.error('[WAYLAND-PATCH] Error patching AppImage:', patchErr);
+    }
+  }
+
   // 7. Copy artifacts to dist-release
   const distReleaseDir = path.join(rootDir, 'dist-release');
   if (!fs.existsSync(distReleaseDir)) {
     fs.mkdirSync(distReleaseDir, { recursive: true });
   }
 
-  const isWindows = process.platform === 'win32';
   const releaseExeCandidates = [
     path.join(rootDir, 'src-tauri', 'target', 'release', isWindows ? 'DAWN.exe' : 'DAWN'),
     path.join(rootDir, 'src-tauri', 'target', 'release', isWindows ? 'dawn.exe' : 'dawn'),
