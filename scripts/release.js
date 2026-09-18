@@ -26,7 +26,11 @@ function run() {
   const oldVersion = pkg.version;
 
   // Check if custom version passed via CLI: node scripts/release.js 1.1.0
-  const argVersion = process.argv[2];
+  // Or check if running in GitHub Actions with a tag (v1.0.1) or CI
+  const tagMatch = (process.env.GITHUB_REF_NAME || process.env.GITHUB_REF || '').match(/v?(\d+\.\d+\.\d+.*)/);
+  const tagVersion = tagMatch ? tagMatch[1] : null;
+  const envVersion = tagVersion || (process.env.CI ? oldVersion : null);
+  const argVersion = process.argv[2] || envVersion;
   const newVersion = argVersion && /^\d+\.\d+\.\d+/.test(argVersion)
     ? argVersion
     : bumpVersion(oldVersion);

@@ -31,8 +31,8 @@ This installer simplifies the entire process of installing, managing, and playin
 
 Head over to the [Releases](https://github.com/echo-matt/Dawn-installer/releases) page to download the latest version for your platform:
 
-- **Windows**: Download `DAWN-v1.0.0-Setup.exe` (installer) or standalone `DAWN-v1.0.0-windows-x64.zip`.
-- **Steam Deck & Linux**: Download `DAWN-v1.0.0.AppImage`, `DAWN_1.0.0_amd64.deb`, or `DAWN-v1.0.0-linux-x64.tar.gz`.
+- **Windows**: Download `DAWN-Setup-v1.0.1.exe` (installer), `DAWN-v1.0.1.msi`, or standalone `DAWN-v1.0.1-Portable.zip`.
+- **Steam Deck & Linux**: Download `DAWN-v1.0.1.AppImage`, `DAWN_1.0.1_amd64.deb`, or `DAWN-v1.0.1-linux-x64.tar.gz`.
 
 ### 2. Quick Setup
 
