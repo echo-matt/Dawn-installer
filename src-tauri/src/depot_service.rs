@@ -550,25 +550,72 @@ pub fn inspect_depot_auth(
 
     // 3. Check authentication success (must NOT match "Connecting to Steam3... Done!")
     if !auth_succeeded && !has_auth_error {
-        let is_login_done = rolling_lower.contains("logging in with qr code... done")
-            || ((rolling_lower.contains("logging '")
-                || rolling_lower.contains("logging \"")
-                || rolling_lower.contains("logging in to steam3"))
-                && rolling_lower.contains("... done"));
-
-        if is_login_done
+        let is_login_done = rolling_lower.contains("with qr code... done")
+            || rolling_lower.contains("with qr code...done")
+            || rolling_lower.contains("into steam3... done")
+            || rolling_lower.contains("into steam3...done")
             || rolling_lower.contains("got login token")
             || rolling_lower.contains("got account info")
             || rolling_lower.contains("requesting app info")
             || rolling_lower.contains("processing depot")
             || rolling_lower.contains("requesting depot info")
-            || rolling_lower.contains("requesting manifest")
-        {
+            || rolling_lower.contains("requesting manifest");
+
+        if is_login_done {
             return AuthInspectionResult::AuthSuccess;
         }
     }
 
     AuthInspectionResult::None
+}
+
+pub fn get_saved_steam_username() -> Option<String> {
+    #[cfg(windows)]
+    {
+        let local_appdata = std::env::var("LOCALAPPDATA").ok()?;
+        let iso_dir = PathBuf::from(local_appdata).join("IsolatedStorage");
+        if !iso_dir.is_dir() {
+            return None;
+        }
+
+        fn search_account_config(dir: &Path) -> Option<PathBuf> {
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if let Some(found) = search_account_config(&path) {
+                            return Some(found);
+                        }
+                    } else if path.file_name().map(|n| n == "account.config").unwrap_or(false) {
+                        return Some(path);
+                    }
+                }
+            }
+            None
+        }
+
+        let config_path = search_account_config(&iso_dir)?;
+        let raw_bytes = std::fs::read(&config_path).ok()?;
+        let decompressed = miniz_oxide::inflate::decompress_to_vec(&raw_bytes).ok()?;
+
+        for i in 0..decompressed.len().saturating_sub(4) {
+            if decompressed[i] == 0x0A {
+                let len = decompressed[i + 1] as usize;
+                if len >= 3 && len <= 32 && i + 2 + len < decompressed.len() {
+                    let candidate = &decompressed[i + 2..i + 2 + len];
+                    if decompressed[i + 2 + len] == 0x12 {
+                        if let Ok(s) = std::str::from_utf8(candidate) {
+                            if s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                                return Some(s.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 async fn execute_depot_step(
@@ -607,8 +654,6 @@ async fn execute_depot_step(
         "-osarch".to_string(),
         "64".to_string(),
         "-validate".to_string(),
-        "-max-servers".to_string(),
-        "20".to_string(),
         "-max-downloads".to_string(),
         "16".to_string(),
     ]);
@@ -616,12 +661,13 @@ async fn execute_depot_step(
     if auth_method == "qr" {
         args.push("-qr".to_string());
     } else if let (Some(u), Some(p)) = (steam_username, steam_password) {
-        if !u.is_empty() {
+        let trimmed_user = u.trim();
+        if !trimmed_user.is_empty() {
             args.push("-username".to_string());
-            args.push(u.to_string());
+            args.push(trimmed_user.to_string());
             args.push("-password".to_string());
             args.push(p.to_string());
-            args.push("-remember-password".to_string());
+            args.push("-no-mobile".to_string());
         }
     }
 
@@ -712,6 +758,15 @@ async fn execute_depot_step(
 
                         let lower = text.to_lowercase();
                         let rolling_lower = rolling_stdout.to_lowercase();
+
+                        // Detect and emit Steam account name if provided by DepotDownloader (e.g. after QR login)
+                        if let Some(pos) = lower.find("next time you can login with -username ") {
+                            let after = &text[pos + "next time you can login with -username ".len()..];
+                            if let Some(user) = after.split_whitespace().next() {
+                                let clean_user = user.trim().trim_matches('"').trim_matches('\'');
+                                let _ = app.emit("depot:steam-username", clean_user.to_string());
+                            }
+                        }
 
                         // Inspect authentication state (errors, success, Steam Guard prompts)
                         match inspect_depot_auth(
@@ -1155,7 +1210,7 @@ Got account info".to_lowercase();
 
         // Password login success (no 2FA)
         let pass_out = "Connecting to Steam3... Done!
-Logging 'destinyuser' to Steam3... Done!
+Logging 'destinyuser' into Steam3... Done!
 Got login token".to_lowercase();
         assert_eq!(
             inspect_depot_auth(&pass_out, "credentials", false, false, false),
@@ -1164,12 +1219,21 @@ Got login token".to_lowercase();
 
         // Password + Steam Guard success
         let guard_out = "Connecting to Steam3... Done!
-Logging 'destinyuser' to Steam3... Done!
+Logging 'destinyuser' into Steam3... Done!
 Got account info
 Requesting app info...".to_lowercase();
         assert_eq!(
             inspect_depot_auth(&guard_out, "credentials", false, false, false),
             AuthInspectionResult::AuthSuccess
+        );
+
+        // Ensure "Connecting to Steam3... Done!" followed by ongoing "Logging 'destinyuser' into Steam3..."
+        // does NOT prematurely trigger AuthSuccess before credentials verification finishes
+        let ongoing_login = "Connecting to Steam3... Done!
+Logging 'destinyuser' into Steam3...".to_lowercase();
+        assert_eq!(
+            inspect_depot_auth(&ongoing_login, "credentials", false, false, false),
+            AuthInspectionResult::None
         );
     }
 
@@ -1189,6 +1253,15 @@ Requesting app info...".to_lowercase();
                 assert_eq!(error_type, "2fa_mismatch");
             }
             other => panic!("Expected AuthError 2fa_mismatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_get_saved_steam_username() {
+        let user = get_saved_steam_username();
+        // On environments with IsolatedStorage (like this dev machine), it finds the detected account
+        if let Some(ref u) = user {
+            assert!(!u.is_empty(), "Username should not be empty");
         }
     }
 }

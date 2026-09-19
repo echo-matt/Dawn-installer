@@ -191,6 +191,13 @@ export const api = {
     return true;
   },
 
+  async getSavedSteamUsername() {
+    if (isTauri) {
+      return await invoke('get_saved_steam_username');
+    }
+    return null;
+  },
+
   // Window actions
   async minimizeWindow() {
     if (isTauri) {
@@ -259,6 +266,13 @@ export const api = {
   onAuthSuccess(cb) {
     if (isTauri) {
       return listen('depot:auth-success', (event) => cb(event.payload));
+    }
+    return () => {};
+  },
+
+  onSteamUsername(cb) {
+    if (isTauri) {
+      return listen('depot:steam-username', (event) => cb(event.payload));
     }
     return () => {};
   },

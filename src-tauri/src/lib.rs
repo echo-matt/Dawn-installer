@@ -65,6 +65,7 @@ pub fn run() {
             commands::clear_debug_logs,
             commands::get_latest_dawn_version,
             commands::get_platform,
+            commands::get_saved_steam_username,
         ])
         .setup(|app| {
             #[cfg(windows)]

@@ -476,6 +476,20 @@
       selectedLanguage = savedLang;
     }
 
+    // Load remembered Steam username (from localStorage or DepotDownloader token)
+    const cachedAccount = localStorage.getItem('dawn_steam_account_name');
+    if (cachedAccount) {
+      savedSteamUsername = cachedAccount;
+    } else {
+      try {
+        const detectedUser = await api.getSavedSteamUsername();
+        if (detectedUser) {
+          savedSteamUsername = detectedUser;
+          localStorage.setItem('dawn_steam_account_name', detectedUser);
+        }
+      } catch (_) {}
+    }
+
     if (savedPath) {
       selectedFolder = savedPath;
       await checkFolderStatus(savedPath);
@@ -556,11 +570,19 @@
       if (data.status) progressDetails = data.status;
     });
 
+    const unlistenSteamUser = await api.onSteamUsername((user) => {
+      if (user) {
+        savedSteamUsername = user;
+        localStorage.setItem('dawn_steam_account_name', user);
+      }
+    });
+
     return () => {
       if (typeof unlistenProgress === 'function') unlistenProgress();
       if (typeof unlistenQr === 'function') unlistenQr();
       if (typeof unlistenSteamGuard === 'function') unlistenSteamGuard();
       if (typeof unlistenAuthSuccess === 'function') unlistenAuthSuccess();
+      if (typeof unlistenSteamUser === 'function') unlistenSteamUser();
       if (typeof unlistenAuthError === 'function') unlistenAuthError();
       if (typeof unlistenInstallerProg === 'function') unlistenInstallerProg();
     };

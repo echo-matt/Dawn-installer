@@ -3,7 +3,10 @@ use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::constants::get_constants;
-use crate::depot_service::{cancel_download, run_depot_download, send_input, ActiveDownloadState};
+use crate::depot_service::{
+    cancel_download, get_saved_steam_username as depot_get_saved_steam_username, run_depot_download,
+    send_input, ActiveDownloadState,
+};
 use crate::installer::{
     clear_cache as installer_clear_cache, detect_game_folder as installer_detect,
     install_dawn as installer_install, launch_game as installer_launch,
@@ -76,6 +79,11 @@ pub async fn send_console_input(
     text: String,
 ) -> Result<bool, String> {
     Ok(send_input(&state, &text).await)
+}
+
+#[tauri::command]
+pub fn get_saved_steam_username() -> Option<String> {
+    depot_get_saved_steam_username()
 }
 
 #[tauri::command]

@@ -164,6 +164,22 @@
               disabled={isLoading}
               bind:value={username}
             />
+            <span class="form-hint">
+              Use your permanent Steam <strong>Account Name</strong> (your login ID, not your Community Display Name or email).
+            </span>
+            {#if savedUsername && savedUsername !== username}
+              <button
+                type="button"
+                class="suggested-account-btn"
+                onclick={() => { username = savedUsername; }}
+              >
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <span>Use detected account name: <strong>{savedUsername}</strong></span>
+              </button>
+            {/if}
           </div>
 
           <div class="form-group">
@@ -224,6 +240,44 @@
   .auth-error-banner svg {
     flex-shrink: 0;
     color: #ef4444;
+  }
+
+  .form-hint {
+    display: block;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 5px;
+    line-height: 1.35;
+  }
+
+  .form-hint strong {
+    color: #cbd5e1;
+  }
+
+  .suggested-account-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 4px 10px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    color: #93c5fd;
+    font-size: 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .suggested-account-btn:hover {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.6);
+    color: #bfdbfe;
+  }
+
+  .suggested-account-btn strong {
+    color: #ffffff;
+    letter-spacing: 0.5px;
   }
 </style>
 
