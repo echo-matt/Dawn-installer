@@ -198,4 +198,10 @@ pub async fn install_app_update(app: AppHandle, asset_url: String, asset_name: S
     crate::app_updater::install_app_update(app, asset_url, asset_name).await
 }
 
+#[tauri::command]
+pub fn log_client_msg(app: AppHandle, level: String, msg: String) {
+    crate::logger::log_msg(&level, &msg, Some(&app));
+}
+
+
 

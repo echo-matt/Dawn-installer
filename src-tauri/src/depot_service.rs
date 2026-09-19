@@ -321,6 +321,18 @@ pub fn parse_qr_from_bytes(raw: &[u8]) -> Option<String> {
     ))
 }
 
+pub fn trim_rolling_output(s: &mut String, max_len: usize, keep_len: usize) {
+    if s.len() > max_len {
+        let target = s.len().saturating_sub(keep_len);
+        let keep_from = s
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .find(|&idx| idx >= target)
+            .unwrap_or(s.len());
+        *s = s[keep_from..].to_string();
+    }
+}
+
 pub async fn run_depot_download(
     app: AppHandle,
     state: Arc<ActiveDownloadState>,
@@ -340,6 +352,62 @@ pub async fn run_depot_download(
         ),
         Some(&app),
     );
+
+    // Target folder safety checks
+    let target_dir = Path::new(&install_root);
+    if crate::installer::is_installer_directory(target_dir) {
+        let err_msg = "Cannot install into the folder where the installer is located. Please choose a separate empty folder for Destiny 2 + Dawn (e.g. C:\\Games\\Dawn).".to_string();
+        let _ = app.emit("depot:output", format!("\r\n[ERROR] {}\r\n", err_msg));
+        crate::logger::log_msg("ERROR", &err_msg, Some(&app));
+        return CommandResult {
+            success: false,
+            message: None,
+            error: Some(err_msg),
+            cancelled: Some(false),
+            count: None,
+        };
+    }
+
+    if crate::installer::is_steamapps_directory(target_dir) {
+        let err_msg = "Cannot install into a Steam 'steamapps' folder. Dawn cannot be installed over retail Destiny 2. Please choose a separate empty folder outside of Steam (e.g. C:\\Games\\Dawn).".to_string();
+        let _ = app.emit("depot:output", format!("\r\n[ERROR] {}\r\n", err_msg));
+        crate::logger::log_msg("ERROR", &err_msg, Some(&app));
+        return CommandResult {
+            success: false,
+            message: None,
+            error: Some(err_msg),
+            cancelled: Some(false),
+            count: None,
+        };
+    }
+
+    // Disk space pre-check: Fail immediately if disk space is insufficient for a fresh install
+    let free_bytes = crate::installer::get_available_disk_space(target_dir);
+    let required_bytes = crate::constants::REQUIRED_FREE_BYTES;
+    let free_gb = (free_bytes as f64) / (1024.0 * 1024.0 * 1024.0);
+    let required_gb = required_bytes / (1024 * 1024 * 1024);
+    let exe_candidate = target_dir.join(crate::constants::GAME_EXECUTABLE);
+    let already_has_game = if exe_candidate.is_file() {
+        crate::installer::is_build_86657(&exe_candidate)
+    } else {
+        false
+    };
+
+    if !already_has_game && !is_verify && free_bytes < required_bytes {
+        let err_msg = format!(
+            "Insufficient disk space! The selected drive only has {:.1} GB free, but Destiny 2 requires at least ~{} GB. Please choose a drive with at least {} GB of free space.",
+            free_gb, required_gb, required_gb
+        );
+        let _ = app.emit("depot:output", format!("\r\n[ERROR] {}\r\n", err_msg));
+        crate::logger::log_msg("ERROR", &err_msg, Some(&app));
+        return CommandResult {
+            success: false,
+            message: None,
+            error: Some(err_msg),
+            cancelled: Some(false),
+            count: None,
+        };
+    }
 
     let exe_path = match ensure_depot_downloader(&app).await {
         Ok(p) => p,
@@ -434,11 +502,21 @@ pub async fn run_depot_download(
     };
 
     if let Err(e) = crate::dawn_release::deploy_dawn_to_game(&app, &release_dir, &install_root).await {
+        let err_msg = format!("Failed to deploy Dawn mod files: {}", e);
         let _ = app.emit(
             "depot:output",
-            format!("[ERROR] Deployment error: {}\r\n", e),
+            format!("[ERROR] {}\r\n", err_msg),
         );
+        crate::logger::log_msg("ERROR", &err_msg, Some(&app));
+        return CommandResult {
+            success: false,
+            message: None,
+            error: Some(err_msg),
+            cancelled: Some(false),
+            count: None,
+        };
     }
+    crate::logger::log_msg("INFO", "Dawn mod files deployed successfully.", Some(&app));
 
     // Step 3: Configure Dawn settings.json with the selected language so steam_api64.dll sets in-game language
     crate::installer::update_dawn_language(&install_root, &language_code);
@@ -667,6 +745,24 @@ async fn execute_depot_step(
         }
     }
 
+    let sanitized_args: Vec<String> = args
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            if i > 0 && args.get(i - 1).map(|p| p == "-password").unwrap_or(false) {
+                "********".to_string()
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+
+    crate::logger::log_msg(
+        "INFO",
+        &format!("Spawning DepotDownloader with args: {}", sanitized_args.join(" ")),
+        Some(app),
+    );
+
     let mut cmd = TokioCommand::new(exe_path);
     cmd.args(&args)
         .current_dir(install_root)
@@ -679,10 +775,12 @@ async fn execute_depot_step(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
+            let err_str = format!("Failed to spawn DepotDownloader: {}", e);
+            crate::logger::log_msg("ERROR", &err_str, Some(app));
             return CommandResult {
                 success: false,
                 message: None,
-                error: Some(format!("Failed to spawn DepotDownloader: {}", e)),
+                error: Some(err_str),
                 cancelled: Some(false),
                 count: None,
             };
@@ -690,15 +788,47 @@ async fn execute_depot_step(
     };
 
     let pid = child.id().unwrap_or(0);
+    crate::logger::log_msg(
+        "INFO",
+        &format!("DepotDownloader process active (PID {})", pid),
+        Some(app),
+    );
     *state.active_pid.lock().await = Some(pid);
     *state.child_stdin.lock().await = child.stdin.take();
 
-    let mut stdout = child.stdout.take().expect("Failed to open stdout");
-    let mut stderr = child.stderr.take().expect("Failed to open stderr");
+    let mut stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let err = "Failed to capture DepotDownloader stdout stream".to_string();
+            crate::logger::log_msg("ERROR", &err, Some(app));
+            return CommandResult {
+                success: false,
+                message: None,
+                error: Some(err),
+                cancelled: Some(false),
+                count: None,
+            };
+        }
+    };
+    let mut stderr = match child.stderr.take() {
+        Some(s) => s,
+        None => {
+            let err = "Failed to capture DepotDownloader stderr stream".to_string();
+            crate::logger::log_msg("ERROR", &err, Some(app));
+            return CommandResult {
+                success: false,
+                message: None,
+                error: Some(err),
+                cancelled: Some(false),
+                count: None,
+            };
+        }
+    };
 
     let progress_regex = regex::Regex::new(r"(\d+(\.\d+)?)%").unwrap();
     let mut raw_buffer = Vec::new();
     let mut last_qr = String::new();
+    let mut last_logged_pct: u32 = 0;
     let mut stdout_buf = [0u8; 4096];
     let mut stderr_buf = [0u8; 4096];
 
@@ -747,10 +877,7 @@ async fn execute_depot_step(
 
                         // Keep rolling window for prompt & state detection across chunk boundaries
                         rolling_output.push_str(&text);
-                        if rolling_output.len() > 8192 {
-                            let keep_from = rolling_output.len() - 4096;
-                            rolling_output = rolling_output[keep_from..].to_string();
-                        }
+                        trim_rolling_output(&mut rolling_output, 8192, 4096);
 
                         let lower = text.to_lowercase();
                         let rolling_lower = rolling_output.to_lowercase();
@@ -802,8 +929,13 @@ async fn execute_depot_step(
                                     let scaled = percent_start as f64
                                         + (parsed_pct / 100.0) * (percent_end - percent_start) as f64;
                                     let status = format!("{} {:.1}%", step_label, parsed_pct);
+                                    let pct_round = scaled.round() as u32;
+                                    if pct_round >= last_logged_pct + 10 || (pct_round == 100 && last_logged_pct < 100) {
+                                        last_logged_pct = (pct_round / 10) * 10;
+                                        crate::logger::log_msg("PROGRESS", &format!("{} [{:.1}%]", step_label, parsed_pct), Some(app));
+                                    }
                                     let _ = app.emit("depot:progress", ProgressPayload {
-                                        percent: scaled.round() as u32,
+                                        percent: pct_round,
                                         status,
                                     });
                                 }
@@ -828,10 +960,7 @@ async fn execute_depot_step(
 
                         // Feed stderr into rolling_output for Steam Guard prompt & error detection
                         rolling_output.push_str(&text);
-                        if rolling_output.len() > 8192 {
-                            let keep_from = rolling_output.len() - 4096;
-                            rolling_output = rolling_output[keep_from..].to_string();
-                        }
+                        trim_rolling_output(&mut rolling_output, 8192, 4096);
 
                         let lower = text.to_lowercase();
                         let rolling_lower = rolling_output.to_lowercase();
@@ -875,6 +1004,23 @@ async fn execute_depot_step(
                 let exit_code = status.map(|s| s.code().unwrap_or(-1)).unwrap_or(-1);
                 *state.active_pid.lock().await = None;
                 *state.child_stdin.lock().await = None;
+
+                // Drain any final pending bytes from stdout/stderr to capture final error messages
+                while let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(50), stdout.read(&mut stdout_buf)).await {
+                    if n == 0 { break; }
+                    let chunk = &stdout_buf[..n];
+                    let text = String::from_utf8_lossy(chunk).to_string();
+                    let _ = app.emit("depot:output", text.clone());
+                    rolling_output.push_str(&text);
+                    trim_rolling_output(&mut rolling_output, 8192, 4096);
+                }
+                while let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(50), stderr.read(&mut stderr_buf)).await {
+                    if n == 0 { break; }
+                    let text = String::from_utf8_lossy(&stderr_buf[..n]).to_string();
+                    let _ = app.emit("depot:output", text.clone());
+                    rolling_output.push_str(&text);
+                    trim_rolling_output(&mut rolling_output, 8192, 4096);
+                }
 
                 if state.is_cancelled.load(Ordering::SeqCst) {
                     crate::logger::log_msg("INFO", &format!("{} was cancelled by user.", step_label), Some(app));
@@ -928,19 +1074,22 @@ async fn execute_depot_step(
         }
 
         if state.is_cancelled.load(Ordering::SeqCst) {
+            let _ = child.kill().await;
             let mut pid_guard = state.active_pid.lock().await;
             if let Some(pid) = *pid_guard {
-                #[cfg(windows)]
-                {
-                    use std::os::windows::process::CommandExt;
-                    let mut k = std::process::Command::new("taskkill");
-                    k.args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(0x08000000);
-                    let _ = k.output();
-                }
-                #[cfg(not(windows))]
-                {
-                    unsafe {
-                        libc::kill(pid as i32, libc::SIGKILL);
+                if pid > 0 {
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        let mut k = std::process::Command::new("taskkill");
+                        k.args(["/PID", &pid.to_string(), "/F"]).creation_flags(0x08000000);
+                        let _ = k.output();
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        unsafe {
+                            libc::kill(pid as i32, libc::SIGKILL);
+                        }
                     }
                 }
                 *pid_guard = None;
@@ -949,7 +1098,7 @@ async fn execute_depot_step(
             {
                 use std::os::windows::process::CommandExt;
                 let mut k = std::process::Command::new("taskkill");
-                k.args(["/IM", "DepotDownloader.exe", "/T", "/F"]).creation_flags(0x08000000);
+                k.args(["/IM", "DepotDownloader.exe", "/F"]).creation_flags(0x08000000);
                 let _ = k.output();
             }
             #[cfg(not(windows))]
@@ -1028,17 +1177,20 @@ pub async fn cancel_download(state: &Arc<ActiveDownloadState>) {
     let mut pid_guard = state.active_pid.lock().await;
     let had_pid = pid_guard.is_some();
     if let Some(pid) = *pid_guard {
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let mut k = std::process::Command::new("taskkill");
-            k.args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(0x08000000);
-            let _ = k.output();
-        }
-        #[cfg(not(windows))]
-        {
-            unsafe {
-                libc::kill(pid as i32, libc::SIGKILL);
+        if pid > 0 {
+            crate::logger::log_msg("INFO", &format!("Terminating DepotDownloader process (PID {})...", pid), None);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let mut k = std::process::Command::new("taskkill");
+                k.args(["/PID", &pid.to_string(), "/F"]).creation_flags(0x08000000);
+                let _ = k.output();
+            }
+            #[cfg(not(windows))]
+            {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGKILL);
+                }
             }
         }
         *pid_guard = None;
@@ -1049,7 +1201,7 @@ pub async fn cancel_download(state: &Arc<ActiveDownloadState>) {
         {
             use std::os::windows::process::CommandExt;
             let mut k = std::process::Command::new("taskkill");
-            k.args(["/IM", "DepotDownloader.exe", "/T", "/F"]).creation_flags(0x08000000);
+            k.args(["/IM", "DepotDownloader.exe", "/F"]).creation_flags(0x08000000);
             let _ = k.output();
         }
         #[cfg(not(windows))]
@@ -1283,4 +1435,23 @@ Logging 'destinyuser' into Steam3...".to_lowercase();
             other => panic!("Expected AuthError 2fa_mismatch, got {:?}", other),
         }
     }
+
+    #[test]
+    fn test_trim_rolling_output_multibyte_safe() {
+        // Construct string with 3-byte UTF-8 full block characters (like Steam QR codes)
+        let block_char = '█'; // 3 bytes: 0xE2, 0x96, 0x88
+        let mut buffer = String::new();
+        for _ in 0..4000 {
+            buffer.push(block_char);
+        }
+        assert!(buffer.len() > 8192);
+
+        // This would panic with a naive buffer[len - 4096..] slice because 12000 - 4096 = 7904,
+        // and 7904 % 3 = 1 (landing inside the 3-byte sequence).
+        // trim_rolling_output must handle this safely without panicking.
+        trim_rolling_output(&mut buffer, 8192, 4096);
+        assert!(buffer.len() <= 4096 + 3);
+        assert!(!buffer.is_empty());
+    }
 }
+

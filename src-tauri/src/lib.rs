@@ -37,6 +37,13 @@ pub fn round_window_corners(window: &tauri::WebviewWindow) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install global panic hook to guarantee any unhandled crash is written to the log file
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("CRITICAL UNHANDLED PANIC: {}", info);
+        crate::logger::log_msg("FATAL", &msg, None);
+        eprintln!("{}", msg);
+    }));
+
     let download_state = Arc::new(ActiveDownloadState::new());
 
     tauri::Builder::default()
@@ -69,8 +76,26 @@ pub fn run() {
             commands::get_platform,
             commands::check_app_update,
             commands::install_app_update,
+            commands::log_client_msg,
         ])
         .setup(|app| {
+            let handle = app.handle().clone();
+            let app_version = env!("CARGO_PKG_VERSION");
+            let os_info = format!("OS: {} {}", std::env::consts::OS, std::env::consts::ARCH);
+            let exe_path = std::env::current_exe()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "unknown".to_string());
+            let log_path = crate::logger::get_log_file_path().display().to_string();
+
+            crate::logger::log_msg(
+                "SYSTEM",
+                &format!(
+                    "Dawn Installer v{} initializing. {}, Exe: '{}', Log: '{}'",
+                    app_version, os_info, exe_path, log_path
+                ),
+                Some(&handle),
+            );
+
             #[cfg(windows)]
             {
                 use tauri::Manager;

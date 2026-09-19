@@ -579,6 +579,7 @@ pub async fn deploy_dawn_to_game(
     let _ = fs::write(target.join("release.json"), &formatted);
 
     crate::installer::ensure_launch_scripts(target);
+    crate::installer::ensure_vc_runtime_files(target, Some(app));
     crate::installer::unblock_game_files(target);
     crate::installer::ensure_cvars_windowed_fullscreen(Some(app));
 

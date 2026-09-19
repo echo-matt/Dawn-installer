@@ -111,6 +111,46 @@ pub fn get_available_disk_space(path: &Path) -> u64 {
     }
 }
 
+pub fn is_installer_directory(p: &Path) -> bool {
+    let Ok(current_exe) = std::env::current_exe() else {
+        return false;
+    };
+    let Some(installer_dir) = current_exe.parent() else {
+        return false;
+    };
+
+    let norm_target = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let norm_installer = installer_dir.canonicalize().unwrap_or_else(|_| installer_dir.to_path_buf());
+
+    let target_str = norm_target
+        .to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .trim_end_matches(['/', '\\'])
+        .to_lowercase();
+    let inst_str = norm_installer
+        .to_string_lossy()
+        .trim_start_matches(r"\\?\")
+        .trim_end_matches(['/', '\\'])
+        .to_lowercase();
+
+    if !target_str.is_empty() && target_str == inst_str {
+        return true;
+    }
+
+    if let Some(exe_name) = current_exe.file_name() {
+        if p.join(exe_name).is_file() {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn is_steamapps_directory(p: &Path) -> bool {
+    let path_lower = p.to_string_lossy().to_lowercase();
+    path_lower.contains("steamapps")
+}
+
 #[cfg(windows)]
 pub fn get_file_version_string(path: &Path) -> Option<String> {
     use std::os::windows::ffi::OsStrExt;
@@ -244,6 +284,50 @@ pub fn validate_preflight(target_path: String) -> PreflightResult {
         }
     }
 
+    // Disallow selecting the installer's own folder
+    if is_installer_directory(p) {
+        let err = "Cannot install into the folder where the installer is located. Please create and choose a separate folder for Destiny 2 + Dawn (e.g. C:\\Games\\Dawn).".to_string();
+        crate::logger::log_msg("WARN", &format!("Preflight rejected folder '{}': is installer directory", trimmed), None);
+        return PreflightResult {
+            valid: false,
+            path: Some(trimmed.to_string()),
+            exists: true,
+            writeable: false,
+            has_game: false,
+            has_dawn: false,
+            dawn_version: None,
+            free_bytes: 0,
+            free_gb: 0.0,
+            required_bytes: REQUIRED_FREE_BYTES,
+            required_gb: 110,
+            has_enough_space: false,
+            warning: None,
+            error: Some(err),
+        };
+    }
+
+    // Disallow selecting a Steam steamapps retail folder
+    if is_steamapps_directory(p) {
+        let err = "Cannot install into a Steam 'steamapps' folder. Dawn cannot be installed over your retail Destiny 2. Please choose a separate empty folder outside of Steam (e.g. C:\\Games\\Dawn).".to_string();
+        crate::logger::log_msg("WARN", &format!("Preflight rejected folder '{}': is steamapps directory", trimmed), None);
+        return PreflightResult {
+            valid: false,
+            path: Some(trimmed.to_string()),
+            exists: true,
+            writeable: false,
+            has_game: false,
+            has_dawn: false,
+            dawn_version: None,
+            free_bytes: 0,
+            free_gb: 0.0,
+            required_bytes: REQUIRED_FREE_BYTES,
+            required_gb: 110,
+            has_enough_space: false,
+            warning: None,
+            error: Some(err),
+        };
+    }
+
     let exists = p.exists();
     if !exists {
         if let Err(e) = fs::create_dir_all(p) {
@@ -309,7 +393,7 @@ pub fn validate_preflight(target_path: String) -> PreflightResult {
         ))
     } else if !has_enough_space {
         Some(format!(
-            "Low disk space: {:.1} GB available. Fresh install requires ~{} GB.",
+            "Insufficient disk space: {:.1} GB free. Fresh install requires at least ~{} GB.",
             free_gb, required_gb
         ))
     } else {
@@ -344,6 +428,15 @@ pub fn validate_preflight(target_path: String) -> PreflightResult {
         }
     }
 
+    crate::logger::log_msg(
+        "PREFLIGHT",
+        &format!(
+            "Path '{}' evaluated: valid=true, has_game={}, has_dawn={} ({:?}), space={:.1}GB/{}GB",
+            trimmed, has_game, has_dawn, dawn_version, free_gb, required_gb
+        ),
+        None,
+    );
+
     PreflightResult {
         valid: true,
         path: Some(trimmed.to_string()),
@@ -370,6 +463,24 @@ pub fn validate_game_folder(folder_path: String) -> FolderValidationResult {
             has_packages: false,
             exe_path: None,
             message: "Directory does not exist".to_string(),
+        };
+    }
+
+    if is_installer_directory(p) {
+        return FolderValidationResult {
+            valid: false,
+            has_packages: false,
+            exe_path: None,
+            message: "Cannot choose the folder where the installer is located. Please choose a separate game folder.".to_string(),
+        };
+    }
+
+    if is_steamapps_directory(p) {
+        return FolderValidationResult {
+            valid: false,
+            has_packages: false,
+            exe_path: None,
+            message: "Cannot install into a Steam 'steamapps' folder. Dawn cannot be installed over retail Destiny 2.".to_string(),
         };
     }
 
@@ -918,12 +1029,67 @@ pub fn check_vc_redist_installed() -> bool {
         let sys_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
         let sys32 = Path::new(&sys_root).join("System32");
         let vcruntime = sys32.join("vcruntime140.dll");
+        let vcruntime_1 = sys32.join("vcruntime140_1.dll");
         let msvcp = sys32.join("msvcp140.dll");
-        vcruntime.is_file() && msvcp.is_file()
+        vcruntime.is_file() && vcruntime_1.is_file() && msvcp.is_file()
     }
     #[cfg(not(windows))]
     {
         true
+    }
+}
+
+pub fn ensure_vc_runtime_files(game_root: &Path, app: Option<&AppHandle>) {
+    #[cfg(windows)]
+    {
+        let sys_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let sys32 = Path::new(&sys_root).join("System32");
+        let bin_x64 = game_root.join("bin").join("x64");
+        let _ = fs::create_dir_all(&bin_x64);
+
+        let runtime_dlls = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"];
+
+        for dll_name in &runtime_dlls {
+            let sys_file = sys32.join(dll_name);
+            let root_dest = game_root.join(dll_name);
+            let bin_dest = bin_x64.join(dll_name);
+
+            if sys_file.is_file() {
+                let should_copy_root = if !root_dest.is_file() {
+                    true
+                } else if let (Ok(src_meta), Ok(dst_meta)) = (sys_file.metadata(), root_dest.metadata()) {
+                    dst_meta.len() == 0 || (src_meta.len() != dst_meta.len() && src_meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH) > dst_meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH))
+                } else {
+                    false
+                };
+
+                if should_copy_root {
+                    if let Ok(_) = fs::copy(&sys_file, &root_dest) {
+                        crate::logger::log_msg("INFO", &format!("Deployed validated 64-bit {} from System32 to game root", dll_name), app);
+                    }
+                }
+
+                let should_copy_bin = if !bin_dest.is_file() {
+                    true
+                } else if let Ok(dst_meta) = bin_dest.metadata() {
+                    dst_meta.len() == 0
+                } else {
+                    false
+                };
+
+                if should_copy_bin {
+                    if let Ok(_) = fs::copy(&sys_file, &bin_dest) {
+                        crate::logger::log_msg("INFO", &format!("Deployed validated 64-bit {} from System32 to bin/x64", dll_name), app);
+                    }
+                }
+            } else {
+                crate::logger::log_msg("WARN", &format!("System32 is missing {}! Visual C++ 2015-2022 (x64) Redistributable may need reinstallation.", dll_name), app);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (game_root, app);
     }
 }
 
@@ -934,6 +1100,12 @@ pub fn unblock_game_files(game_root: &Path) {
             game_root.join(GAME_EXECUTABLE),
             game_root.join("steam_api64.dll"),
             game_root.join("bin").join("x64").join("steam_api64.dll"),
+            game_root.join("vcruntime140.dll"),
+            game_root.join("vcruntime140_1.dll"),
+            game_root.join("msvcp140.dll"),
+            game_root.join("bin").join("x64").join("vcruntime140.dll"),
+            game_root.join("bin").join("x64").join("vcruntime140_1.dll"),
+            game_root.join("bin").join("x64").join("msvcp140.dll"),
             game_root.join("launch-destiny.cmd"),
             game_root.join("steam_appid.txt"),
         ];
@@ -1179,7 +1351,7 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
     #[cfg(windows)]
     {
         if !check_vc_redist_installed() {
-            let msg = "Microsoft Visual C++ 2015-2022 (x64) Redistributable is missing. Destiny 2 cannot run without it. Please download and install it from Microsoft: https://aka.ms/vs/17/release/vc_redist.x64.exe".to_string();
+            let msg = "Microsoft Visual C++ 2015-2022 (x64) Redistributable is missing or incomplete (vcruntime140.dll, vcruntime140_1.dll, or msvcp140.dll missing from System32). Note: The 64-bit (x64) version is required even if you have the 32-bit (x86) version installed. Please install it from Microsoft: https://aka.ms/vs/17/release/vc_redist.x64.exe".to_string();
             let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
             crate::logger::log_msg("ERROR", &msg, Some(&app));
             return CommandResult {
@@ -1191,6 +1363,7 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
             };
         }
 
+        ensure_vc_runtime_files(&p, Some(&app));
         unblock_game_files(&p);
         ensure_cvars_windowed_fullscreen(Some(&app));
     }
@@ -1201,6 +1374,11 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
     {
         use std::os::windows::process::CommandExt;
         let _ = app.emit("depot:output", format!("[LAUNCH] Launching Destiny 2 directly from {:?}...\r\n", exe_path));
+        crate::logger::log_msg(
+            "INFO",
+            &format!("Launching Destiny 2 from dir {:?}, exe: {:?}, DAWN_FOREST_BASELINE=1", p, exe_path),
+            Some(&app),
+        );
 
         let mut cmd = Command::new(&exe_path);
         cmd.current_dir(&p)
@@ -1210,6 +1388,7 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         match cmd.spawn() {
             Ok(mut child) => {
                 let pid = child.id();
+                crate::logger::log_msg("INFO", &format!("Destiny 2 process spawned with PID {}", pid), Some(&app));
 
                 // Check for immediate startup crash (missing runtime, DLL not found, bad format)
                 std::thread::sleep(std::time::Duration::from_millis(750));
@@ -1398,5 +1577,39 @@ mod tests {
             assert!(installed);
         }
     }
+
+    #[test]
+    fn test_is_steamapps_directory() {
+        assert!(is_steamapps_directory(Path::new(r"C:\Program Files (x86)\Steam\steamapps\common\Destiny 2")));
+        assert!(is_steamapps_directory(Path::new(r"D:\SteamLibrary\SteamApps\common\Destiny 2")));
+        assert!(is_steamapps_directory(Path::new("/home/user/.steam/steam/steamapps/common/Destiny 2")));
+        assert!(!is_steamapps_directory(Path::new(r"C:\Games\Dawn")));
+        assert!(!is_steamapps_directory(Path::new(r"D:\Destiny2-Dawn")));
+        assert!(!is_steamapps_directory(Path::new("/home/user/Games/Dawn")));
+    }
+
+    #[test]
+    fn test_is_installer_directory() {
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(parent) = current_exe.parent() {
+                assert!(is_installer_directory(parent), "Current exe directory must be identified as installer directory");
+            }
+        }
+
+        let temp_dir = std::env::temp_dir().join(format!("dawn_test_non_installer_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        assert!(!is_installer_directory(&temp_dir), "Empty temp directory must NOT be identified as installer directory");
+
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(exe_name) = current_exe.file_name() {
+                let dummy_exe = temp_dir.join(exe_name);
+                let _ = fs::write(&dummy_exe, b"dummy");
+                assert!(is_installer_directory(&temp_dir), "Directory containing installer executable must be identified as installer directory");
+            }
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
+
 

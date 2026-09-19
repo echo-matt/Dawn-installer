@@ -118,6 +118,15 @@
     }
 
     const preflight = await api.validatePreflight(folderPath);
+    if (!preflight.valid || preflight.error) {
+      hasGameInstalled = false;
+      hasDawnInstalled = false;
+      spaceStatus = 'dot-red';
+      folderTitle = `${folderPath} — ${preflight.error || 'Invalid destination folder'}`;
+      showToast(preflight.error || 'Invalid destination folder selected.', 8000);
+      return;
+    }
+
     hasGameInstalled = Boolean(preflight.has_game);
     hasDawnInstalled = Boolean(preflight.has_dawn);
     if (preflight.dawn_version) {
@@ -147,8 +156,8 @@
       spaceStatus = 'dot-green';
       folderTitle = `${folderPath} — ${preflight.free_gb} GB free`;
     } else {
-      spaceStatus = 'dot-amber';
-      folderTitle = `${folderPath} — Low disk space (${preflight.free_gb} GB free, ~${preflight.required_gb} GB needed)`;
+      spaceStatus = 'dot-red';
+      folderTitle = `${folderPath} — Insufficient disk space (${preflight.free_gb} GB free, ~${preflight.required_gb} GB needed)`;
     }
   }
 
@@ -231,6 +240,17 @@
       return;
     }
 
+    const preflight = await api.validatePreflight(selectedFolder);
+    if (!preflight.valid || preflight.error) {
+      hasGameInstalled = false;
+      hasDawnInstalled = false;
+      spaceStatus = 'dot-red';
+      const errMsg = preflight.error || 'Invalid destination folder selected.';
+      folderTitle = `${selectedFolder} — ${errMsg}`;
+      showToast(errMsg, 8000);
+      return;
+    }
+
     if (hasGameInstalled) {
       if (!hasDawnInstalled || isDawnUpdateAvailable) {
         await runDirectDawnInstall();
@@ -246,7 +266,17 @@
       return;
     }
 
-    // Fresh install flow: reset state
+    // Fresh install flow: verify disk space before starting
+    if (!preflight.has_game && !preflight.has_enough_space) {
+      spaceStatus = 'dot-red';
+      folderTitle = `${selectedFolder} — Insufficient disk space (${preflight.free_gb} GB free, ~${preflight.required_gb} GB needed)`;
+      showToast(
+        `Cannot install: Not enough hard drive space! You have ${preflight.free_gb} GB free, but Destiny 2 requires at least ~${preflight.required_gb} GB. Please choose a drive with more space.`,
+        9000
+      );
+      return;
+    }
+
     isVerifyMode = false;
     authErrorMessage = '';
     guardErrorMessage = '';
@@ -265,6 +295,17 @@
     if (!selectedFolder) {
       showToast('Please select a destination folder first.');
       await handleSelectFolder();
+      return;
+    }
+
+    const preflight = await api.validatePreflight(selectedFolder);
+    if (!preflight.valid || preflight.error) {
+      hasGameInstalled = false;
+      hasDawnInstalled = false;
+      spaceStatus = 'dot-red';
+      const errMsg = preflight.error || 'Invalid destination folder selected.';
+      folderTitle = `${selectedFolder} — ${errMsg}`;
+      showToast(errMsg, 8000);
       return;
     }
 
@@ -333,10 +374,13 @@
         progressStepDesc = isVerifyMode ? 'Game files verified and repaired' : 'Dawn and Destiny 2 are ready to play';
         progressDetails = 'Finished successfully';
         hasGameInstalled = true;
+        hasDawnInstalled = true;
         isOperationRunning = false;
         isAuthModalOpen = false;
         isGuardModalOpen = false;
         showToast(isVerifyMode ? 'Files verified & repaired successfully!' : 'Dawn installed successfully!');
+        api.log('INFO', `Installation flow finished successfully. Refreshing folder status for '${selectedFolder}'`);
+        await checkFolderStatus(selectedFolder);
       } else {
         hideProgress();
         if (authErrorMessage) {
@@ -344,6 +388,7 @@
           activeAuthTab = 'credentials';
         } else if (res.error) {
           const errLower = res.error.toLowerCase();
+          api.log('WARN', `Download flow error returned: ${res.error}`);
           if (
             errLower.includes('password') ||
             errLower.includes('steam guard') ||
@@ -363,6 +408,7 @@
     } catch (err) {
       isAuthSubmitting = false;
       hideProgress();
+      api.log('ERROR', `Download flow exception: ${err.message || err}`);
       showToast(`Download error: ${err.message || err}`);
     } finally {
       isAuthSubmitting = false;
@@ -384,6 +430,7 @@
   }
 
   async function handleCancel() {
+    api.log('INFO', 'User cancelled active operation');
     hideProgress();
     isAuthSubmitting = false;
     isAuthModalOpen = false;
@@ -403,6 +450,7 @@
   }
 
   function handleAuthSubmitCredentials({ username, password }) {
+    api.log('INFO', `Credentials submitted for user '${username}'`);
     savedSteamUsername = username;
     isAuthSubmitting = true;
     authErrorMessage = '';

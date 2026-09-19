@@ -201,6 +201,16 @@ export const api = {
     return true;
   },
 
+  async log(level, msg) {
+    if (isTauri) {
+      try {
+        await invoke('log_client_msg', { level, msg });
+      } catch (_) {}
+    } else {
+      console.log(`[${level}] ${msg}`);
+    }
+  },
+
   // Window actions
   async minimizeWindow() {
     if (isTauri) {
