@@ -14,6 +14,7 @@
     onOpenFolder = () => {},
     onOpenDocs = () => {},
     onOpenDebugLogs = () => {},
+    onOpenHelp = () => {},
     onUpdateDawn = () => {},
     onUninstallDawn = () => {},
     isUpdateAvailable = false,
@@ -67,6 +68,23 @@
 
 <footer class="bottom-right-cluster">
   <div class="action-row">
+    <!-- 0. Prominent Help & Guide Button -->
+    <button
+      type="button"
+      class="deep-blue-btn help-action-btn"
+      id="help-guide-action-btn"
+      title="How to Install & Play Guide"
+      disabled={isOperationRunning}
+      onclick={onOpenHelp}
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#38bdf8" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+      <span class="help-btn-text">HELP & GUIDE</span>
+    </button>
+
     <!-- 1. Deep Blue Transparent Select Folder Button -->
     <button
       class="deep-blue-btn folder-btn"
@@ -178,6 +196,14 @@
         </button>
         <button type="button" class="menu-item" id="opt-open-logs" onclick={() => { closeMenu(); onOpenDebugLogs(); }}>
           <span>View Debug Logs</span>
+        </button>
+        <button type="button" class="menu-item" id="opt-open-help" onclick={() => { closeMenu(); onOpenHelp(); }}>
+          <span style="color: #38bdf8; font-weight: 600;">Installation Guide & FAQ</span>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
         </button>
         <div class="menu-divider"></div>
         <button type="button" class="menu-item menu-item-danger" id="opt-uninstall-dawn" onclick={() => { closeMenu(); onUninstallDawn(); }}>

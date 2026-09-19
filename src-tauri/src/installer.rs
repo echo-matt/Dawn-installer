@@ -912,12 +912,112 @@ pub fn update_dawn_language(install_root: &str, language_code: &str) {
     }
 }
 
+pub fn check_vc_redist_installed() -> bool {
+    #[cfg(windows)]
+    {
+        let sys_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let sys32 = Path::new(&sys_root).join("System32");
+        let vcruntime = sys32.join("vcruntime140.dll");
+        let msvcp = sys32.join("msvcp140.dll");
+        vcruntime.is_file() && msvcp.is_file()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
+pub fn unblock_game_files(game_root: &Path) {
+    #[cfg(windows)]
+    {
+        let files_to_unblock = [
+            game_root.join(GAME_EXECUTABLE),
+            game_root.join("bin").join("x64").join("steam_api64.dll"),
+            game_root.join("launch-destiny.cmd"),
+        ];
+
+        for f in &files_to_unblock {
+            if f.exists() {
+                let stream = format!("{}:Zone.Identifier", f.to_string_lossy());
+                let _ = fs::remove_file(stream);
+            }
+        }
+
+        let bin_dawn = game_root.join("bin").join("x64").join("Dawn");
+        if bin_dawn.is_dir() {
+            if let Ok(entries) = fs::read_dir(&bin_dawn) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() {
+                        let stream = format!("{}:Zone.Identifier", p.to_string_lossy());
+                        let _ = fs::remove_file(stream);
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = game_root;
+    }
+}
+
+pub fn ensure_cvars_windowed_fullscreen(app: Option<&AppHandle>) {
+    #[cfg(windows)]
+    {
+        let appdata = match std::env::var("APPDATA") {
+            Ok(v) if !v.trim().is_empty() => v,
+            _ => return,
+        };
+
+        let prefs_dir = PathBuf::from(appdata).join("Bungie").join("DestinyPC").join("prefs");
+        if let Err(_) = fs::create_dir_all(&prefs_dir) {
+            return;
+        }
+        let cvars_path = prefs_dir.join("cvars.xml");
+
+        if !cvars_path.exists() {
+            let default_xml = "<?xml version=\"1.0\"?>\r\n<body>\r\n\t<namespace name=\"graphics\">\r\n\t\t<cvar name=\"window_mode\" value=\"2\" />\r\n\t</namespace>\r\n</body>\r\n";
+            let _ = fs::write(&cvars_path, default_xml);
+            if let Some(a) = app {
+                let _ = a.emit("depot:output", "[DAWN] Initialized display preferences (Windowed Fullscreen) in cvars.xml\r\n");
+            }
+        } else if let Ok(mut content) = fs::read_to_string(&cvars_path) {
+            let mut modified = false;
+            if content.contains("window_mode") {
+                if content.contains(r#"<cvar name="window_mode" value="0""#) {
+                    content = content.replace(r#"<cvar name="window_mode" value="0""#, r#"<cvar name="window_mode" value="2""#);
+                    modified = true;
+                } else if content.contains(r#"<cvar name="window_mode" value="1""#) {
+                    content = content.replace(r#"<cvar name="window_mode" value="1""#, r#"<cvar name="window_mode" value="2""#);
+                    modified = true;
+                }
+            } else if let Some(pos) = content.find("<namespace name=\"graphics\">") {
+                let insert_pos = pos + "<namespace name=\"graphics\">".len();
+                content.insert_str(insert_pos, "\r\n\t\t<cvar name=\"window_mode\" value=\"2\" />");
+                modified = true;
+            }
+
+            if modified {
+                let _ = fs::write(&cvars_path, content);
+                if let Some(a) = app {
+                    let _ = a.emit("depot:output", "[DAWN] Configured cvars.xml with window_mode=2 (Windowed Fullscreen)\r\n");
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
 pub fn ensure_launch_scripts(game_root: &Path) {
     #[cfg(windows)]
     {
         let cmd_path = game_root.join("launch-destiny.cmd");
         if !cmd_path.exists() {
-            let script = "@echo off\r\ncd /d \"%~dp0\"\r\nset DAWN_FOREST_BASELINE=1\r\nstart \"\" \"%~dp0destiny2.exe\" %*\r\n";
+            let script = "@echo off\r\ncd /d \"%~dp0\"\r\nset DAWN_FOREST_BASELINE=1\r\nif not exist \"%~dp0destiny2.exe\" (\r\n    echo [ERROR] destiny2.exe was not found in %~dp0\r\n    pause\r\n    exit /b 1\r\n)\r\nstart \"\" \"%~dp0destiny2.exe\" %*\r\n";
             let _ = fs::write(&cmd_path, script);
         }
     }
@@ -1044,42 +1144,121 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         };
     }
 
+    // steam_api64.dll must strictly live ONLY in bin/x64, not in the game root
+    let root_dll = p.join("steam_api64.dll");
+    if root_dll.is_file() {
+        let _ = fs::remove_file(&root_dll);
+    }
+
+    let bin_dll = p.join("bin").join("x64").join("steam_api64.dll");
+    if !bin_dll.exists() {
+        let msg = "Dawn mod proxy (bin/x64/steam_api64.dll) was not found. Windows Defender or your antivirus may have quarantined it, or Dawn was not installed. Please reinstall Dawn Mod and check your antivirus protection history.".to_string();
+        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+        crate::logger::log_msg("ERROR", &msg, Some(&app));
+        return CommandResult {
+            success: false,
+            message: None,
+            error: Some(msg),
+            cancelled: Some(false),
+            count: None,
+        };
+    }
+
+    #[cfg(windows)]
+    {
+        if !check_vc_redist_installed() {
+            let msg = "Microsoft Visual C++ 2015-2022 (x64) Redistributable is missing. Destiny 2 cannot run without it. Please download and install it from Microsoft: https://aka.ms/vs/17/release/vc_redist.x64.exe".to_string();
+            let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+            crate::logger::log_msg("ERROR", &msg, Some(&app));
+            return CommandResult {
+                success: false,
+                message: None,
+                error: Some(msg),
+                cancelled: Some(false),
+                count: None,
+            };
+        }
+
+        unblock_game_files(&p);
+        ensure_cvars_windowed_fullscreen(Some(&app));
+    }
+
     ensure_launch_scripts(&p);
 
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let cmd_path = p.join("launch-destiny.cmd");
-        let _ = app.emit("depot:output", format!("[LAUNCH] Launching Destiny 2 from {:?}...\r\n", p));
+        let _ = app.emit("depot:output", format!("[LAUNCH] Launching Destiny 2 directly from {:?}...\r\n", exe_path));
 
-        let mut cmd = if cmd_path.exists() {
-            let mut c = Command::new("cmd.exe");
-            c.args(["/c", "launch-destiny.cmd"]);
-            c
-        } else {
-            Command::new(&exe_path)
-        };
-
+        let mut cmd = Command::new(&exe_path);
         cmd.current_dir(&p)
             .env("DAWN_FOREST_BASELINE", "1")
             .creation_flags(0x00000200); // CREATE_NEW_PROCESS_GROUP
 
         match cmd.spawn() {
-            Ok(child) => {
+            Ok(mut child) => {
                 let pid = child.id();
-                let msg = format!("Game launched successfully (PID: {})", pid);
-                let _ = app.emit("depot:output", format!("[LAUNCH] {}\r\n", msg));
-                crate::logger::log_msg("INFO", &msg, Some(&app));
-                CommandResult {
-                    success: true,
-                    message: Some(msg),
-                    error: None,
-                    cancelled: Some(false),
-                    count: None,
+
+                // Check for immediate startup crash (missing runtime, DLL not found, bad format)
+                std::thread::sleep(std::time::Duration::from_millis(750));
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        let raw_code = status.code().unwrap_or(-1);
+                        let ucode = raw_code as u32;
+                        let err_desc = match ucode {
+                            0xC0000135 => "STATUS_DLL_NOT_FOUND (A required DLL was not found. Please install Visual C++ 2015-2022 x64 Redistributable and DirectX runtimes: https://aka.ms/vs/17/release/vc_redist.x64.exe)",
+                            0xC000007B => "STATUS_INVALID_IMAGE_FORMAT (A 32/64-bit DLL conflict or corrupted file was detected)",
+                            0xC0000005 => "STATUS_ACCESS_VIOLATION (Game crashed during early initialization. Check graphics drivers and ensure cvars.xml has window_mode=2)",
+                            0xC0000409 => "STATUS_STACK_BUFFER_OVERRUN",
+                            _ => "Process terminated immediately after launch",
+                        };
+                        let msg = format!("destiny2.exe exited immediately with code 0x{:08X} ({})", ucode, err_desc);
+                        let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
+                        crate::logger::log_msg("ERROR", &msg, Some(&app));
+                        CommandResult {
+                            success: false,
+                            message: None,
+                            error: Some(msg),
+                            cancelled: Some(false),
+                            count: None,
+                        }
+                    }
+                    Ok(None) => {
+                        let msg = format!("Game launched successfully (PID: {})", pid);
+                        let _ = app.emit("depot:output", format!("[LAUNCH] {}\r\n", msg));
+                        crate::logger::log_msg("INFO", &msg, Some(&app));
+                        CommandResult {
+                            success: true,
+                            message: Some(msg),
+                            error: None,
+                            cancelled: Some(false),
+                            count: None,
+                        }
+                    }
+                    Err(e) => {
+                        let msg = format!("Game spawned (PID: {}), check status: {}", pid, e);
+                        let _ = app.emit("depot:output", format!("[LAUNCH] {}\r\n", msg));
+                        crate::logger::log_msg("INFO", &msg, Some(&app));
+                        CommandResult {
+                            success: true,
+                            message: Some(msg),
+                            error: None,
+                            cancelled: Some(false),
+                            count: None,
+                        }
+                    }
                 }
             }
             Err(e) => {
-                let msg = format!("Failed to launch game: {}", e);
+                let os_code = e.raw_os_error().unwrap_or(0);
+                let friendly = match os_code {
+                    193 => "ERROR_BAD_EXE_FORMAT: destiny2.exe is not a valid 64-bit executable. The file may be corrupted.",
+                    5 => "ERROR_ACCESS_DENIED: Access was denied launching destiny2.exe. Check folder permissions or antivirus.",
+                    225 => "ERROR_VIRUS_INFECTED: Windows Defender or Antivirus blocked the game. Please add an exclusion in Windows Security.",
+                    1260 => "ERROR_KM_DRIVER_BLOCKED: Windows Smart App Control or Group Policy blocked execution.",
+                    _ => "Failed to spawn destiny2.exe",
+                };
+                let msg = format!("Failed to launch game: {} ({})", e, friendly);
                 let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
                 crate::logger::log_msg("ERROR", &msg, Some(&app));
                 CommandResult {
@@ -1166,6 +1345,7 @@ mod tests {
             assert!(cmd_path.is_file(), "launch-destiny.cmd should be created on Windows");
             let content = fs::read_to_string(&cmd_path).unwrap();
             assert!(content.contains("destiny2.exe"));
+            assert!(content.contains("DAWN_FOREST_BASELINE=1"));
         }
 
         #[cfg(not(windows))]
@@ -1178,4 +1358,33 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_unblock_game_files() {
+        let temp_dir = std::env::temp_dir().join(format!("dawn_test_unblock_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let test_file = temp_dir.join("destiny2.exe");
+        let _ = fs::write(&test_file, b"test payload");
+
+        unblock_game_files(&temp_dir);
+        assert!(test_file.exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_check_vc_redist_installed() {
+        // Function should run without panic on any platform
+        let installed = check_vc_redist_installed();
+        #[cfg(windows)]
+        {
+            // On the Windows development machine, VC++ redistributable is installed
+            assert!(installed, "VC++ Redistributable should be detected on dev machine");
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(installed);
+        }
+    }
 }
+

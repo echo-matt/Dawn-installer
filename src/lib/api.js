@@ -142,6 +142,15 @@ export const api = {
     return { success: true, message: 'Game launched' };
   },
 
+  async getAppVersion() {
+    if (isTauri) {
+      try {
+        return await invoke('get_app_version');
+      } catch (_) {}
+    }
+    return typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.2';
+  },
+
   async getPlatform() {
     if (isTauri) {
       try {
@@ -283,4 +292,31 @@ export const api = {
     }
     return () => {};
   },
+
+  async checkAppUpdate() {
+    if (isTauri) {
+      try {
+        return await invoke('check_app_update');
+      } catch (e) {
+        console.warn('App update check failed:', e);
+        return null;
+      }
+    }
+    return null;
+  },
+
+  async installAppUpdate(assetUrl, assetName) {
+    if (isTauri) {
+      return await invoke('install_app_update', { assetUrl, assetName });
+    }
+    return { success: true };
+  },
+
+  onAppUpdateProgress(cb) {
+    if (isTauri) {
+      return listen('app-update:progress', (event) => cb(event.payload));
+    }
+    return () => {};
+  },
 };
+

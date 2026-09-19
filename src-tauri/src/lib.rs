@@ -1,3 +1,4 @@
+mod app_updater;
 mod commands;
 mod constants;
 mod dawn_release;
@@ -64,7 +65,10 @@ pub fn run() {
             commands::open_log_file,
             commands::clear_debug_logs,
             commands::get_latest_dawn_version,
+            commands::get_app_version,
             commands::get_platform,
+            commands::check_app_update,
+            commands::install_app_update,
         ])
         .setup(|app| {
             #[cfg(windows)]

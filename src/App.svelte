@@ -12,10 +12,17 @@
   import DebugConsole from './components/DebugConsole.svelte';
   import ConfirmUninstallModal from './components/ConfirmUninstallModal.svelte';
   import LinuxLaunchModal from './components/LinuxLaunchModal.svelte';
+  import AppUpdateModal from './components/AppUpdateModal.svelte';
+  import HelpModal from './components/HelpModal.svelte';
 
   // App State
   let isLinux = $state(false);
   let isLinuxLaunchModalOpen = $state(false);
+  let isHelpModalOpen = $state(false);
+  let isAppUpdateModalOpen = $state(false);
+  let appUpdateInfo = $state(null);
+  let isAppUpdating = $state(false);
+  let appUpdateProgress = $state(null);
   let selectedFolder = $state('');
   let isUninstallModalOpen = $state(false);
   let selectedLanguage = $state('english');
@@ -171,12 +178,12 @@
     try {
       const res = await api.launchGame(selectedFolder, selectedLanguage);
       if (!res.success) {
-        showToast(res.error || res.message || 'Failed to launch game', 5000);
+        showToast(res.error || res.message || 'Failed to launch game', 7000);
       } else {
         showToast(res.message || 'Game launched successfully!', 3500);
       }
     } catch (err) {
-      showToast(`Launch error: ${err.message || err}`, 5000);
+      showToast(`Launch error: ${err.message || err}`, 7000);
     }
   }
 
@@ -468,6 +475,30 @@
     await api.openDocs();
   }
 
+  function handleCloseHelp() {
+    isHelpModalOpen = false;
+    localStorage.setItem('dawn_has_seen_help_guide', 'true');
+    if (appUpdateInfo && appUpdateInfo.update_available) {
+      isAppUpdateModalOpen = true;
+    }
+  }
+
+  async function handleInstallAppUpdate() {
+    if (!appUpdateInfo || !appUpdateInfo.asset_url || isAppUpdating) {
+      if (appUpdateInfo?.html_url) {
+        window.open(appUpdateInfo.html_url, '_blank');
+      }
+      return;
+    }
+    isAppUpdating = true;
+    try {
+      await api.installAppUpdate(appUpdateInfo.asset_url, appUpdateInfo.asset_name || 'DAWN-Setup.exe');
+    } catch (err) {
+      isAppUpdating = false;
+      showToast(`Update error: ${err.message || err}`, 7000);
+    }
+  }
+
   onMount(async () => {
     // 0. Detect OS platform
     try {
@@ -482,6 +513,23 @@
         latestDawnVersion = ver;
       }
     } catch (_) {}
+
+    // 0.2 Check for Launcher self-updates
+    api.checkAppUpdate().then((info) => {
+      if (info && info.update_available) {
+        appUpdateInfo = info;
+        if (!isHelpModalOpen) {
+          isAppUpdateModalOpen = true;
+        }
+      }
+    }).catch(() => {});
+
+    // 0.3 Automatically show Help & Guide on first launch
+    const hasSeenGuide = localStorage.getItem('dawn_has_seen_help_guide');
+    if (!hasSeenGuide) {
+      isHelpModalOpen = true;
+      localStorage.setItem('dawn_has_seen_help_guide', 'true');
+    }
 
     // 1. Load saved preferences
     const savedPath = localStorage.getItem('dawn_destiny2_path');
@@ -571,6 +619,10 @@
       if (data.status) progressDetails = data.status;
     });
 
+    const unlistenAppUpdateProg = await api.onAppUpdateProgress((data) => {
+      appUpdateProgress = data;
+    });
+
     return () => {
       if (typeof unlistenProgress === 'function') unlistenProgress();
       if (typeof unlistenQr === 'function') unlistenQr();
@@ -578,6 +630,7 @@
       if (typeof unlistenAuthSuccess === 'function') unlistenAuthSuccess();
       if (typeof unlistenAuthError === 'function') unlistenAuthError();
       if (typeof unlistenInstallerProg === 'function') unlistenInstallerProg();
+      if (typeof unlistenAppUpdateProg === 'function') unlistenAppUpdateProg();
     };
   });
 </script>
@@ -624,6 +677,7 @@
       onClearCache={handleClearCache}
       onOpenFolder={handleOpenFolder}
       onOpenDebugLogs={() => (isDebugConsoleOpen = true)}
+      onOpenHelp={() => (isHelpModalOpen = true)}
     />
 
     <!-- Toast Notification -->
@@ -674,5 +728,21 @@
   <LinuxLaunchModal
     isOpen={isLinuxLaunchModalOpen}
     onClose={() => (isLinuxLaunchModalOpen = false)}
+  />
+
+  <!-- Launcher Self-Update Modal -->
+  <AppUpdateModal
+    isOpen={isAppUpdateModalOpen}
+    updateInfo={appUpdateInfo}
+    isUpdating={isAppUpdating}
+    updateProgress={appUpdateProgress}
+    onClose={() => (isAppUpdateModalOpen = false)}
+    onUpdate={handleInstallAppUpdate}
+  />
+
+  <!-- Installation Guide & Help Modal -->
+  <HelpModal
+    isOpen={isHelpModalOpen}
+    onClose={handleCloseHelp}
   />
 </div>

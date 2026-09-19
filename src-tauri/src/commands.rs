@@ -176,8 +176,23 @@ pub fn clear_debug_logs() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
 pub async fn get_latest_dawn_version() -> Option<String> {
     crate::dawn_release::get_latest_dawn_version().await
+}
+
+#[tauri::command]
+pub async fn check_app_update(app: AppHandle) -> Result<crate::app_updater::AppUpdateInfo, String> {
+    crate::app_updater::check_app_update(app).await
+}
+
+#[tauri::command]
+pub async fn install_app_update(app: AppHandle, asset_url: String, asset_name: String) -> Result<(), String> {
+    crate::app_updater::install_app_update(app, asset_url, asset_name).await
 }
 
 

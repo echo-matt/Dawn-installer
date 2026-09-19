@@ -55,6 +55,9 @@ function run() {
   // 4. Update tauri.conf.json
   const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
   tauriConf.version = newVersion;
+  if (tauriConf.app?.windows?.[0]) {
+    tauriConf.app.windows[0].title = `Dawn Installer v${newVersion}`;
+  }
   fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
   console.log(`[OK] Updated src-tauri/tauri.conf.json to v${newVersion}`);
 

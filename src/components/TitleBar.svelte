@@ -1,9 +1,30 @@
 <script>
+  import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
 
   let {
+    appVersion: propVersion = null,
     onOpenDebugLogs = () => {}
   } = $props();
+
+  let fetchedVersion = $state(null);
+
+  onMount(async () => {
+    try {
+      const ver = await api.getAppVersion();
+      if (ver) {
+        fetchedVersion = ver;
+      }
+    } catch (_) {}
+  });
+
+  const staticVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.1.2';
+  let activeVersion = $derived(propVersion || fetchedVersion || staticVersion);
+  let displayTitle = $derived(
+    activeVersion
+      ? `Dawn Installer v${activeVersion.replace(/^v/, '')}`
+      : 'Dawn Installer'
+  );
 
   function handleMinimize() {
     api.minimizeWindow();
@@ -16,7 +37,7 @@
 
 <header class="titlebar" data-tauri-drag-region>
   <div class="titlebar-brand" data-tauri-drag-region>
-    <span class="brand-text" data-tauri-drag-region>DAWN</span>
+    <span class="brand-text" data-tauri-drag-region>{displayTitle}</span>
   </div>
 
   <div class="titlebar-controls">

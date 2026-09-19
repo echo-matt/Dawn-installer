@@ -533,7 +533,7 @@ pub async fn deploy_dawn_to_game(
         let _ = app.emit("depot:output", format!("[WARN] Copy notification: {}\r\n", e));
     }
 
-    // 5. Ensure Dawn directory and steam_api64.dll are in bin/x64 as well
+    // 5. Ensure Dawn directory and steam_api64.dll are in bin/x64
     let dawn_sub = payload.join("Dawn");
     let bin_dawn = target.join("bin").join("x64").join("Dawn");
     if dawn_sub.exists() {
@@ -547,7 +547,12 @@ pub async fn deploy_dawn_to_game(
             let _ = fs::create_dir_all(parent);
         }
         let _ = fs::copy(&steam_dll, &bin_steam_dll);
-        let _ = fs::copy(&steam_dll, target.join("steam_api64.dll"));
+    }
+
+    // steam_api64.dll must strictly live ONLY in bin/x64, not in game root
+    let root_dll = target.join("steam_api64.dll");
+    if root_dll.is_file() {
+        let _ = fs::remove_file(&root_dll);
     }
 
     // 6. Copy release metadata and record installed tag
@@ -574,6 +579,8 @@ pub async fn deploy_dawn_to_game(
     let _ = fs::write(target.join("release.json"), &formatted);
 
     crate::installer::ensure_launch_scripts(target);
+    crate::installer::unblock_game_files(target);
+    crate::installer::ensure_cvars_windowed_fullscreen(Some(app));
 
     let _ = app.emit("depot:output", "[DAWN] Dawn mod deployed successfully!\r\n");
     Ok(())
