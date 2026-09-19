@@ -80,7 +80,7 @@ export const api = {
     return null;
   },
 
-  async startDepotDownload({ installRoot, languageCode, authMethod, steamUsername, steamPassword }) {
+  async startDepotDownload({ installRoot, languageCode, authMethod, steamUsername, steamPassword, isVerify = false }) {
     if (isTauri) {
       return await invoke('start_depot_download', {
         installRoot,
@@ -88,6 +88,7 @@ export const api = {
         authMethod,
         steamUsername,
         steamPassword,
+        isVerify,
       });
     }
     return { success: true, message: 'Mock download started' };

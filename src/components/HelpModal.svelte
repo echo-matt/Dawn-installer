@@ -86,8 +86,11 @@
           <span style="background: #22c55e; color: #0f172a; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">4</span>
           Clean Reset (If Anything Breaks)
         </div>
-        <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.5; margin: 0;">
-          If an installation gets interrupted or corrupted for any reason: open your chosen game folder in Windows File Explorer, <strong>delete all files inside that folder</strong>, and click <strong>Install</strong> in this launcher to start a fresh, clean download.
+        <p style="font-size: 12.5px; color: #cbd5e1; line-height: 1.5; margin: 0 0 8px 0;">
+          If an installation gets interrupted or corrupted: click the <strong>Verify Files</strong> button next to Launch Game (or in the options menu) to scan and repair all game files via SteamDepot.
+        </p>
+        <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.5; margin: 0;">
+          For a total clean reset: open your game folder, <strong>delete all files inside it</strong>, and click <strong>Install</strong> to redownload from scratch.
         </p>
       </div>
 

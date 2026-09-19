@@ -33,6 +33,7 @@
   let dawnVersion = $state(null);
   let latestDawnVersion = $state(null);
   let isOperationRunning = $state(false);
+  let isVerifyMode = $state(false);
 
   // Progress Card State
   let progressVisible = $state(false);
@@ -246,6 +247,7 @@
     }
 
     // Fresh install flow: reset state
+    isVerifyMode = false;
     authErrorMessage = '';
     guardErrorMessage = '';
     isAuthSubmitting = false;
@@ -254,6 +256,26 @@
     qrSvg = '';
 
     // Initiate background download in QR mode
+    runDownloadFlow({ authMethod: 'qr' });
+  }
+
+  async function handleVerifyFiles() {
+    if (isOperationRunning) return;
+
+    if (!selectedFolder) {
+      showToast('Please select a destination folder first.');
+      await handleSelectFolder();
+      return;
+    }
+
+    isVerifyMode = true;
+    authErrorMessage = '';
+    guardErrorMessage = '';
+    isAuthSubmitting = false;
+    activeAuthTab = 'qr';
+    isAuthModalOpen = true;
+    qrSvg = '';
+
     runDownloadFlow({ authMethod: 'qr' });
   }
 
@@ -282,11 +304,11 @@
     isOperationRunning = true;
     progressVisible = true;
     progressPercent = 0;
-    progressTitle = 'Signing in to Steam';
+    progressTitle = isVerifyMode ? 'Verifying Game Files' : 'Signing in to Steam';
     progressStepDesc = authMethod === 'qr'
       ? 'Scan the QR code with Steam Mobile'
       : 'Authenticating account credentials...';
-    progressDetails = 'Connecting to Steam...';
+    progressDetails = isVerifyMode ? 'Connecting to Steam for manifest validation...' : 'Connecting to Steam...';
 
     try {
       const res = await api.startDepotDownload({
@@ -295,6 +317,7 @@
         authMethod,
         steamUsername,
         steamPassword,
+        isVerify: isVerifyMode,
       });
 
       isAuthSubmitting = false;
@@ -302,18 +325,18 @@
       if (res.cancelled || !isOperationRunning) {
         if (!isAuthModalOpen) {
           hideProgress();
-          showToast('Download cancelled.');
+          showToast(isVerifyMode ? 'Verification cancelled.' : 'Download cancelled.');
         }
       } else if (res.success && isOperationRunning) {
         progressPercent = 100;
-        progressTitle = 'Installation Complete!';
-        progressStepDesc = 'Dawn and Destiny 2 are ready to play';
+        progressTitle = isVerifyMode ? 'Verification Complete!' : 'Installation Complete!';
+        progressStepDesc = isVerifyMode ? 'Game files verified and repaired' : 'Dawn and Destiny 2 are ready to play';
         progressDetails = 'Finished successfully';
         hasGameInstalled = true;
         isOperationRunning = false;
         isAuthModalOpen = false;
         isGuardModalOpen = false;
-        showToast('Dawn installed successfully!');
+        showToast(isVerifyMode ? 'Files verified & repaired successfully!' : 'Dawn installed successfully!');
       } else {
         hideProgress();
         if (authErrorMessage) {
@@ -556,7 +579,7 @@
       if (!isOperationRunning) return;
       progressVisible = true;
       progressPercent = data.percent;
-      progressTitle = 'Downloading Destiny 2 & Installing Dawn';
+      progressTitle = isVerifyMode ? 'Verifying & Repairing Game Files' : 'Downloading Destiny 2 & Installing Dawn';
       progressStepDesc = `Account Authenticated • Language: ${selectedLanguage.toUpperCase()}`;
       progressDetails = data.status || `${data.percent}%`;
 
@@ -665,12 +688,14 @@
       {selectedLanguage}
       {installButtonText}
       {isOperationRunning}
+      {hasGameInstalled}
       isUpdateAvailable={isDawnUpdateAvailable}
       {isLinux}
       onLinuxLaunchAttempt={() => (isLinuxLaunchModalOpen = true)}
       onSelectFolder={handleSelectFolder}
       onLanguageChange={handleLanguageChange}
       onInstall={handleMainAction}
+      onVerifyFiles={handleVerifyFiles}
       onLaunchAnyway={launchGame}
       onUpdateDawn={runDirectDawnInstall}
       onUninstallDawn={handleRequestUninstall}

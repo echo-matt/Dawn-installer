@@ -932,8 +932,10 @@ pub fn unblock_game_files(game_root: &Path) {
     {
         let files_to_unblock = [
             game_root.join(GAME_EXECUTABLE),
+            game_root.join("steam_api64.dll"),
             game_root.join("bin").join("x64").join("steam_api64.dll"),
             game_root.join("launch-destiny.cmd"),
+            game_root.join("steam_appid.txt"),
         ];
 
         for f in &files_to_unblock {
@@ -1144,15 +1146,21 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         };
     }
 
-    // steam_api64.dll must strictly live ONLY in bin/x64, not in the game root
+    // Ensure steam_api64.dll exists in BOTH root and bin/x64
     let root_dll = p.join("steam_api64.dll");
-    if root_dll.is_file() {
-        let _ = fs::remove_file(&root_dll);
+    let bin_dll = p.join("bin").join("x64").join("steam_api64.dll");
+
+    if !root_dll.exists() && bin_dll.exists() {
+        let _ = fs::copy(&bin_dll, &root_dll);
+    } else if !bin_dll.exists() && root_dll.exists() {
+        if let Some(parent) = bin_dll.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::copy(&root_dll, &bin_dll);
     }
 
-    let bin_dll = p.join("bin").join("x64").join("steam_api64.dll");
-    if !bin_dll.exists() {
-        let msg = "Dawn mod proxy (bin/x64/steam_api64.dll) was not found. Windows Defender or your antivirus may have quarantined it, or Dawn was not installed. Please reinstall Dawn Mod and check your antivirus protection history.".to_string();
+    if !root_dll.exists() && !bin_dll.exists() {
+        let msg = "Dawn mod proxy (steam_api64.dll) was not found in the game folder. Windows Defender or your antivirus may have quarantined it, or Dawn was not installed. Please reinstall Dawn Mod or Verify Files, and check your antivirus protection history.".to_string();
         let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
         crate::logger::log_msg("ERROR", &msg, Some(&app));
         return CommandResult {
@@ -1163,6 +1171,10 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
             count: None,
         };
     }
+
+    // Ensure steam_appid.txt is present in game root so SteamAPI does not restart into retail Destiny 2 / BattlEye
+    let appid_path = p.join("steam_appid.txt");
+    let _ = fs::write(&appid_path, "1085660\r\n");
 
     #[cfg(windows)]
     {

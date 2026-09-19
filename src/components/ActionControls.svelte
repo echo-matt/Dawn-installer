@@ -18,6 +18,8 @@
     onUpdateDawn = () => {},
     onUninstallDawn = () => {},
     isUpdateAvailable = false,
+    hasGameInstalled = false,
+    onVerifyFiles = () => {},
     onLaunchAnyway = () => {},
     isLinux = false,
     onLinuxLaunchAttempt = () => {}
@@ -129,6 +131,24 @@
         <option value="koreana">KO</option>
       </select>
     </div>
+ 
+    <!-- 2.5 Verify Files Button -->
+    {#if hasGameInstalled}
+      <button
+        type="button"
+        class="deep-blue-btn verify-action-btn"
+        id="verify-files-action-btn"
+        title="Verify and repair game files via SteamDepot --validate"
+        disabled={isOperationRunning}
+        onclick={onVerifyFiles}
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <polyline points="9 12 11 14 15 10"></polyline>
+        </svg>
+        <span class="verify-btn-text">Verify Files</span>
+      </button>
+    {/if}
 
     <!-- 3. Crisp White Split Install Button & Options Menu -->
     <div class="button-wrapper">
@@ -186,6 +206,13 @@
         <button type="button" class="menu-item" id="opt-update-dawn" onclick={() => { closeMenu(); onUpdateDawn(); }}>
           <span>Update / Reinstall Dawn Mod</span>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+        <button type="button" class="menu-item" id="opt-verify-files" onclick={() => { closeMenu(); onVerifyFiles(); }}>
+          <span style="color: #38bdf8; font-weight: 600;">Verify Files (--validate)</span>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <polyline points="9 12 11 14 15 10"></polyline>
+          </svg>
         </button>
         <button type="button" class="menu-item" id="opt-clear-cache" onclick={() => { closeMenu(); onClearCache(); }}>
           <span>Clear Dawn Cache</span>

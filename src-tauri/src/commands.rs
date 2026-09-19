@@ -48,9 +48,11 @@ pub async fn start_depot_download(
     auth_method: Option<String>,
     steam_username: Option<String>,
     steam_password: Option<String>,
+    is_verify: Option<bool>,
 ) -> Result<CommandResult, String> {
     let method = auth_method.unwrap_or_else(|| "qr".to_string());
     let state_clone = Arc::clone(&state);
+    let verify = is_verify.unwrap_or(false);
 
     Ok(run_depot_download(
         app,
@@ -60,6 +62,7 @@ pub async fn start_depot_download(
         method,
         steam_username,
         steam_password,
+        verify,
     )
     .await)
 }

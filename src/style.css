@@ -275,6 +275,34 @@ html, body {
   color: #ffffff;
 }
 
+/* 0.5 Verify Action Button */
+.verify-action-btn {
+  padding: 0 13px;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  flex-shrink: 0;
+}
+
+.verify-action-btn .verify-btn-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.verify-action-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+  transform: translateY(-1px);
+}
+
+.verify-action-btn:hover:not(:disabled) .verify-btn-text {
+  color: #38bdf8;
+}
+
 /* 1. Folder Button */
 .folder-btn {
   padding: 0 14px;

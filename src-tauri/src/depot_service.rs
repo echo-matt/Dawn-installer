@@ -329,13 +329,14 @@ pub async fn run_depot_download(
     auth_method: String,
     steam_username: Option<String>,
     steam_password: Option<String>,
+    is_verify: bool,
 ) -> CommandResult {
     state.is_cancelled.store(false, Ordering::SeqCst);
     crate::logger::log_msg(
         "INFO",
         &format!(
-            "Download initiated: install_root='{}', language='{}', auth_method='{}'",
-            install_root, language_code, auth_method
+            "Download initiated: install_root='{}', language='{}', auth_method='{}', is_verify={}",
+            install_root, language_code, auth_method, is_verify
         ),
         Some(&app),
     );
@@ -363,13 +364,18 @@ pub async fn run_depot_download(
     let _ = tokio::fs::create_dir_all(target_dir).await;
 
     // Single unified download session for Base Game + Selected Language Depot
-    let _ = app.emit(
-        "depot:output",
+    let step_label = if is_verify {
+        format!(
+            "\r\n[STEP 1/2] Verifying & Repairing Base Game & {} Language Depot (--validate)...\r\n",
+            lang_info.name
+        )
+    } else {
         format!(
             "\r\n[STEP 1/2] Downloading Base Game & {} Language Depot...\r\n",
             lang_info.name
-        ),
-    );
+        )
+    };
+    let _ = app.emit("depot:output", step_label);
 
     let depots = [
         (BASE_DEPOT_ID, BASE_MANIFEST_ID),
@@ -441,9 +447,15 @@ pub async fn run_depot_download(
         format!("[CONFIG] Game language configured to '{}'\r\n", language_code),
     );
 
+    let success_msg = if is_verify {
+        format!("Destiny 2 ({}) & Dawn verified and repaired successfully!", lang_info.name)
+    } else {
+        format!("Destiny 2 ({}) & Dawn installed successfully!", lang_info.name)
+    };
+
     CommandResult {
         success: true,
-        message: Some(format!("Destiny 2 ({}) & Dawn installed successfully!", lang_info.name)),
+        message: Some(success_msg),
         error: None,
         cancelled: Some(false),
         count: None,

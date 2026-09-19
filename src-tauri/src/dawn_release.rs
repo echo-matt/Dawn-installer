@@ -541,19 +541,19 @@ pub async fn deploy_dawn_to_game(
     }
 
     let steam_dll = payload.join("steam_api64.dll");
+    let root_steam_dll = target.join("steam_api64.dll");
     let bin_steam_dll = target.join("bin").join("x64").join("steam_api64.dll");
     if steam_dll.exists() {
+        let _ = fs::copy(&steam_dll, &root_steam_dll);
         if let Some(parent) = bin_steam_dll.parent() {
             let _ = fs::create_dir_all(parent);
         }
         let _ = fs::copy(&steam_dll, &bin_steam_dll);
     }
 
-    // steam_api64.dll must strictly live ONLY in bin/x64, not in game root
-    let root_dll = target.join("steam_api64.dll");
-    if root_dll.is_file() {
-        let _ = fs::remove_file(&root_dll);
-    }
+    // Ensure steam_appid.txt is present in game root to prevent Steam redirecting to live retail D2
+    let appid_path = target.join("steam_appid.txt");
+    let _ = fs::write(&appid_path, "1085660\r\n");
 
     // 6. Copy release metadata and record installed tag
     let dawn_meta = target.join(".dawn");
