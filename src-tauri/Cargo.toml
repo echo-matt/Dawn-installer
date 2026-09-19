@@ -35,7 +35,6 @@ sysinfo = "0.33"
 sha2 = "0.10"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
-miniz_oxide = "0.8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

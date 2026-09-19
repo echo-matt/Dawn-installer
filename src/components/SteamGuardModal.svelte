@@ -5,7 +5,8 @@
     message = 'Enter the Steam Guard code sent to your email or authenticator:',
     errorMessage = '',
     onClose = () => {},
-    onSubmitCode = () => {}
+    onSubmitCode = () => {},
+    onSwitchToQr = () => {}
   } = $props();
 
   let codeInput = $state('');
@@ -58,11 +59,17 @@
               spellcheck="false"
               bind:value={codeInput}
             />
+            <span class="input-hint">
+              If your Steam Mobile App only approves logins without codes, tap <strong>Switch to QR Code</strong> below to scan with your phone instead.
+            </span>
           </div>
 
           <div class="modal-actions">
             <button class="modal-btn modal-btn-cancel" id="steam-guard-cancel" type="button" onclick={onClose}>
               Cancel
+            </button>
+            <button class="modal-btn modal-btn-secondary" type="button" onclick={onSwitchToQr}>
+              Switch to QR Code
             </button>
             <button class="modal-btn modal-btn-primary" id="steam-guard-confirm" type="submit">
               Submit Code
@@ -77,6 +84,9 @@
         <div class="modal-actions" style="margin-top: 20px;">
           <button class="modal-btn modal-btn-cancel" type="button" onclick={onClose}>
             Cancel
+          </button>
+          <button class="modal-btn modal-btn-secondary" type="button" onclick={onSwitchToQr}>
+            Switch to QR Code
           </button>
         </div>
       {/if}
@@ -102,6 +112,19 @@
   .auth-error-banner svg {
     flex-shrink: 0;
     color: #ef4444;
+  }
+
+  .input-hint {
+    display: block;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.55);
+    margin-top: 6px;
+    line-height: 1.35;
+    text-align: left;
+  }
+
+  .input-hint strong {
+    color: #93c5fd;
   }
 </style>
 
