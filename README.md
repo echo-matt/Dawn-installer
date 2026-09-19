@@ -31,22 +31,39 @@ This installer simplifies the entire process of installing, managing, and playin
 
 Head over to the [Releases](https://github.com/echo-matt/Dawn-installer/releases) page to download the latest version for your platform:
 
-- **Windows**: Download `DAWN-Setup-v1.0.1.exe` (installer), `DAWN-v1.0.1.msi`, or standalone `DAWN-v1.0.1-Portable.zip`.
-- **Steam Deck & Linux**: Download `DAWN-v1.0.1.AppImage`, `DAWN_1.0.1_amd64.deb`, or `DAWN-v1.0.1-linux-x64.tar.gz`.
+- **Windows**: Download `DAWN-Setup-v1.1.3.exe` (installer), `DAWN-v1.1.3.msi`, or standalone `DAWN-v1.1.3-Portable.zip`.
+- **Steam Deck & Linux**: Download `DAWN-v1.1.0.AppImage`, `DAWN_1.1.0_amd64.deb`, or `DAWN-v1.1.0-linux-x64.tar.gz`.
 
-### 2. Quick Setup
+### Install Instructions
 
-1. **Select Game Folder**:
-   - Launch DAWN installer.
-   - Click the directory pill in the bottom-right corner to select your Destiny 2 folder (or let the app auto-detect an existing install).
-2. **Select Language**:
-   - Use the language selector to pick your preferred game depot language (e.g., English, French, German, Spanish, Japanese).
-3. **Install**:
-   - Click **INSTALL**.
-   - If your folder does not have correct build files yet, DAWN installer will prompt you to authenticate with Steam. Scan the QR code with your Steam Mobile app or enter your credentials. (DAWN installer does not hold any personal data about your steam account)
-   - DAWN will download the game files and automatically install the Dawn mod.
-4. **Launch**:
-   - When finished, click **LAUNCH** to start playing Dawn!
+#### 1. Keep the Installer in Its Own Separate Folder
+* Keep the Dawn Installer in its own standalone location (such as Downloads or a dedicated installer folder).
+* The installer and the game must never share the same folder.
+
+#### 2. Create a New, Empty Game Folder
+* Create a brand new, empty folder on your drive for the game itself (for example: `C:\Games\Dawn` or `D:\Destiny2-Dawn`).
+* **DO NOT** select your retail Steam Destiny 2 folder.
+* **DO NOT** select a folder synced with OneDrive or cloud storage.
+* **DO NOT** select the folder where the installer itself is running from.
+
+#### 3. Select the Game Folder in the Installer
+* Open the Dawn Installer.
+* Click the folder selector button and choose the empty game folder you created in Step 2.
+
+#### 4. Log In and Install
+* Click **Install**.
+* When prompted, log into your Steam account (scan the QR code using your Steam Mobile app or enter your credentials).
+* You do **NOT** need Sunrise or any external tools installed. The installer automatically downloads the compatible version of Destiny 2 and applies Dawn over it.
+* Keep the installer open until the download finishes completely.
+
+#### 5. Launching the Game
+* Click **Launch Game** inside the installer.
+* **Fallback**: If the launch button does not start the game, navigate to your game installation folder in File Explorer and launch `destiny2.exe` directly.
+
+#### 6. Troubleshooting / Clean Reinstall
+* If the game does not start, verify you have the Microsoft Visual C++ 2015-2022 x64 Redistributable installed.
+* Check Windows Defender / Antivirus Protection History to confirm that `bin\x64\steam_api64.dll` was not blocked.
+* If files get corrupted or anything breaks, delete everything inside the game installation folder and run the installer again.
 
 ---
 
