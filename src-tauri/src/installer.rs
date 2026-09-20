@@ -976,6 +976,18 @@ pub fn clear_cache(game_root: String) -> CommandResult {
         }
     }
 
+    // Purge steam_appid.txt if present
+    let appid_root = PathBuf::from(&game_root).join("steam_appid.txt");
+    if appid_root.is_file() {
+        let _ = fs::remove_file(&appid_root);
+        cleared += 1;
+    }
+    let appid_bin = PathBuf::from(&game_root).join("bin").join("x64").join("steam_appid.txt");
+    if appid_bin.is_file() {
+        let _ = fs::remove_file(&appid_bin);
+        cleared += 1;
+    }
+
     CommandResult {
         success: true,
         message: Some(format!("Cleared {} cache files", cleared)),
@@ -1107,7 +1119,6 @@ pub fn unblock_game_files(game_root: &Path) {
             game_root.join("bin").join("x64").join("vcruntime140_1.dll"),
             game_root.join("bin").join("x64").join("msvcp140.dll"),
             game_root.join("launch-destiny.cmd"),
-            game_root.join("steam_appid.txt"),
         ];
 
         for f in &files_to_unblock {
@@ -1344,9 +1355,18 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         };
     }
 
-    // Ensure steam_appid.txt is present in game root so SteamAPI does not restart into retail Destiny 2 / BattlEye
-    let appid_path = p.join("steam_appid.txt");
-    let _ = fs::write(&appid_path, "1085660\r\n");
+    // Ensure steam_appid.txt is purged: Destiny 2 anti-tamper specifically detects steam_appid.txt
+    // and throws the error "Problem reading game content, please close destiny 2..."
+    let appid_root = p.join("steam_appid.txt");
+    if appid_root.exists() {
+        let _ = fs::remove_file(&appid_root);
+        crate::logger::log_msg("INFO", "Purged steam_appid.txt from game root (prevents 'Problem reading game content')", Some(&app));
+    }
+    let appid_bin = p.join("bin").join("x64").join("steam_appid.txt");
+    if appid_bin.exists() {
+        let _ = fs::remove_file(&appid_bin);
+        crate::logger::log_msg("INFO", "Purged steam_appid.txt from bin/x64", Some(&app));
+    }
 
     #[cfg(windows)]
     {

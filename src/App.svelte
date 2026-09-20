@@ -767,6 +767,7 @@
     isLoading={isAuthSubmitting}
     initialTab={activeAuthTab}
     savedUsername={savedSteamUsername}
+    isVerify={isVerifyMode}
     onClose={handleAuthClose}
     onSubmitCredentials={handleAuthSubmitCredentials}
     onTabChange={handleAuthTabChange}

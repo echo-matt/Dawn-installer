@@ -6,6 +6,7 @@
     isLoading = false,
     initialTab = 'qr',
     savedUsername = '',
+    isVerify = false,
     onClose = () => {},
     onSubmitCredentials = () => {},
     onTabChange = () => {}
@@ -64,10 +65,16 @@
           <svg class="steam-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
             <path d="M12 2C6.477 2 2 6.477 2 12c0 4.237 2.636 7.855 6.356 9.312l2.67-3.885a3.5 3.5 0 0 1-.026-.016l-3.328-1.37a2.5 2.5 0 1 1 .59-1.428l3.66 1.507a3.5 3.5 0 0 1 5.922-1.996 3.5 3.5 0 0 1 .156 4.95l-3.86 2.653A10.02 10.02 0 0 0 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
           </svg>
-          <h3>Sign in to Steam</h3>
+          <h3>{isVerify ? 'Sign In to Verify Files' : 'Sign in to Steam'}</h3>
         </div>
         <button class="modal-close-btn" id="steam-modal-close" title="Cancel" onclick={handleClose}>&times;</button>
       </div>
+
+      {#if isVerify}
+        <div style="margin: 0 0 12px 0; padding: 8px 12px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; font-size: 11.5px; color: #bae6fd; line-height: 1.4;">
+          Steam authentication is required to download official file manifests and compare checksums against Steam's servers. Please keep this open and scan or log in.
+        </div>
+      {/if}
 
       <!-- Auth Method Tabs -->
       <div class="auth-tabs">

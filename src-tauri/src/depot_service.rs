@@ -495,14 +495,35 @@ pub async fn run_depot_download(
         Err(e) => {
             let _ = app.emit(
                 "depot:output",
-                format!("[WARN] Failed to fetch latest release: {}. Using bundled fallback...\r\n", e),
+                format!("[WARN] Failed to fetch latest release: {}. Checking local cache or bundled...\r\n", e),
             );
-            crate::installer::get_bundled_payload_dir()
+            if let Some(cached) = crate::dawn_release::get_latest_cached_release_dir() {
+                let _ = app.emit(
+                    "depot:output",
+                    format!("[DAWN] Using cached release at {:?}\r\n", cached),
+                );
+                cached
+            } else {
+                crate::installer::get_bundled_payload_dir()
+            }
         }
     };
 
-    if let Err(e) = crate::dawn_release::deploy_dawn_to_game(&app, &release_dir, &install_root).await {
-        let err_msg = format!("Failed to deploy Dawn mod files: {}", e);
+    let mut deploy_res = crate::dawn_release::deploy_dawn_to_game(&app, &release_dir, &install_root).await;
+    if deploy_res.is_err() {
+        if let Some(cached) = crate::dawn_release::get_latest_cached_release_dir() {
+            if cached != release_dir {
+                let _ = app.emit(
+                    "depot:output",
+                    format!("[WARN] Initial deployment failed; retrying with cached release {:?}...\r\n", cached),
+                );
+                deploy_res = crate::dawn_release::deploy_dawn_to_game(&app, &cached, &install_root).await;
+            }
+        }
+    }
+
+    if let Err(e) = deploy_res {
+        let err_msg = format!("Failed to deploy Dawn mod files: {}. You can click 'Reinstall Dawn' to retry.", e);
         let _ = app.emit(
             "depot:output",
             format!("[ERROR] {}\r\n", err_msg),

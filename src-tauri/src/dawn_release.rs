@@ -55,8 +55,12 @@ pub fn is_valid_release_dir(dir: &Path) -> bool {
     let has_dll = dir.join("payload").join("steam_api64.dll").exists()
         || dir.join("steam_api64.dll").exists()
         || dir.join("bin").join("x64").join("steam_api64.dll").exists();
-    let has_meta = dir.join("release.json").exists() || dir.join(".dawn").join("release.json").exists();
-    has_dll && has_meta
+    let has_meta_or_dawn = dir.join("release.json").exists()
+        || dir.join(".dawn").join("release.json").exists()
+        || dir.join("payload").join("Dawn").exists()
+        || dir.join("Dawn").exists()
+        || dir.join("payload").exists();
+    has_dll && has_meta_or_dawn
 }
 
 pub fn get_latest_cached_release_dir() -> Option<PathBuf> {
@@ -98,35 +102,93 @@ pub async fn resolve_tag_from_web_redirect() -> Result<GitHubRelease, String> {
         let loc_str = loc.to_str().map_err(|_| "Invalid location header")?;
         if let Some(tag) = loc_str.split("/tag/").nth(1) {
             let tag_clean = tag.trim_matches('/').to_string();
-            let version_num = tag_clean.trim_start_matches('v').to_string();
-            let zip_name = format!("Dawn-{}.zip", version_num);
-            let zip_url = format!(
-                "https://github.com/isinternets/Dawn/releases/download/{}/{}",
-                tag_clean, zip_name
+            let version_num = tag_clean.trim_start_matches(['v', 'V']).to_string();
+
+            let mut assets = Vec::new();
+
+            // 1. Try querying GitHub's expanded_assets HTML endpoint for exact asset names and URLs
+            let expanded_url = format!(
+                "https://github.com/isinternets/Dawn/releases/expanded_assets/{}",
+                tag_clean
             );
-            let sha_name = format!("Dawn-{}.zip.sha256", version_num);
-            let sha_url = format!(
-                "https://github.com/isinternets/Dawn/releases/download/{}/{}",
-                tag_clean, sha_name
-            );
+            let fetch_client = reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .build()
+                .unwrap_or_default();
+
+            if let Ok(exp_res) = fetch_client.get(&expanded_url).send().await {
+                if exp_res.status().is_success() {
+                    if let Ok(html) = exp_res.text().await {
+                        let prefix = format!("/releases/download/{}/", tag_clean);
+                        let mut cursor = 0;
+                        while let Some(pos) = html[cursor..].find(&prefix) {
+                            let start = cursor + pos + prefix.len();
+                            if let Some(end) = html[start..].find('"') {
+                                let filename = html[start..start + end].trim();
+                                if !filename.is_empty() {
+                                    let download_url = format!(
+                                        "https://github.com/isinternets/Dawn/releases/download/{}/{}",
+                                        tag_clean, filename
+                                    );
+                                    if !assets.iter().any(|a: &GitHubAsset| a.browser_download_url == download_url) {
+                                        assets.push(GitHubAsset {
+                                            name: filename.to_string(),
+                                            size: 0,
+                                            browser_download_url: download_url,
+                                        });
+                                    }
+                                }
+                                cursor = start + end;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. If expanded_assets didn't return assets, generate all possible naming patterns
+            if assets.is_empty() {
+                let candidates = [
+                    format!("{}.zip", version_num),
+                    format!("Dawn-{}.zip", version_num),
+                    format!("{}.zip", tag_clean),
+                    format!("Dawn-{}.zip", tag_clean),
+                    "Dawn.zip".to_string(),
+                ];
+                for cand in &candidates {
+                    assets.push(GitHubAsset {
+                        name: cand.clone(),
+                        size: 4_000_000,
+                        browser_download_url: format!(
+                            "https://github.com/isinternets/Dawn/releases/download/{}/{}",
+                            tag_clean, cand
+                        ),
+                    });
+                }
+                let sha_candidates = [
+                    "SHA256SUMS.txt".to_string(),
+                    format!("{}.zip.sha256", version_num),
+                    format!("Dawn-{}.zip.sha256", version_num),
+                ];
+                for sha in &sha_candidates {
+                    assets.push(GitHubAsset {
+                        name: sha.clone(),
+                        size: 100,
+                        browser_download_url: format!(
+                            "https://github.com/isinternets/Dawn/releases/download/{}/{}",
+                            tag_clean, sha
+                        ),
+                    });
+                }
+            }
 
             return Ok(GitHubRelease {
                 tag_name: tag_clean,
                 name: Some(format!("Dawn {}", version_num)),
                 html_url: Some(loc_str.to_string()),
                 body: None,
-                assets: vec![
-                    GitHubAsset {
-                        name: zip_name,
-                        size: 4_000_000,
-                        browser_download_url: zip_url,
-                    },
-                    GitHubAsset {
-                        name: sha_name,
-                        size: 100,
-                        browser_download_url: sha_url,
-                    },
-                ],
+                assets,
             });
         }
     }
@@ -211,6 +273,248 @@ pub async fn fetch_latest_release() -> Result<GitHubRelease, String> {
     resolve_tag_from_web_redirect().await
 }
 
+async fn download_and_extract_release(app: &AppHandle, release: &GitHubRelease) -> Result<PathBuf, String> {
+    let tag = release.tag_name.clone();
+    let _ = app.emit(
+        "depot:output",
+        format!("[DAWN] Found latest release: {} on GitHub\r\n", tag),
+    );
+
+    let releases_dir = get_releases_dir();
+    let target_dir = releases_dir.join(&tag);
+
+    if is_valid_release_dir(&target_dir) {
+        let _ = app.emit(
+            "depot:output",
+            format!("[DAWN] Latest release {} is already cached and verified.\r\n", tag),
+        );
+        return Ok(target_dir);
+    }
+
+    let mut zip_candidates: Vec<GitHubAsset> = release
+        .assets
+        .iter()
+        .filter(|a| {
+            let n = a.name.to_lowercase();
+            n.ends_with(".zip") && !n.ends_with(".zip.sha256") && !n.contains("source")
+        })
+        .cloned()
+        .collect();
+
+    let version_num = tag.trim_start_matches(['v', 'V']).to_string();
+    let fallback_names = [
+        format!("{}.zip", version_num),
+        format!("Dawn-{}.zip", version_num),
+        format!("{}.zip", tag),
+        format!("Dawn-{}.zip", tag),
+        "Dawn.zip".to_string(),
+    ];
+    for name in &fallback_names {
+        let url = format!(
+            "https://github.com/isinternets/Dawn/releases/download/{}/{}",
+            tag, name
+        );
+        if !zip_candidates.iter().any(|a| a.browser_download_url == url) {
+            zip_candidates.push(GitHubAsset {
+                name: name.clone(),
+                size: 0,
+                browser_download_url: url,
+            });
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        .build()
+        .map_err(|e| format!("Failed to build client: {}", e))?;
+
+    let mut downloaded: Option<(GitHubAsset, Vec<u8>)> = None;
+    for cand in &zip_candidates {
+        let mb = (cand.size as f64) / (1024.0 * 1024.0);
+        let size_desc = if mb > 0.1 { format!(" ({:.2} MB)", mb) } else { String::new() };
+        let _ = app.emit(
+            "depot:output",
+            format!("[DAWN] Downloading {}{}...\r\n", cand.name, size_desc),
+        );
+        let _ = app.emit(
+            "installer:progress",
+            ProgressPayload {
+                percent: 96,
+                status: format!("Downloading Dawn {}{}...", tag, size_desc),
+            },
+        );
+
+        match client.get(&cand.browser_download_url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.bytes().await {
+                    Ok(b) if !b.is_empty() => {
+                        downloaded = Some((cand.clone(), b.to_vec()));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(resp) => {
+                let _ = app.emit(
+                    "depot:output",
+                    format!("[DAWN] Candidate {} returned HTTP {}\r\n", cand.name, resp.status()),
+                );
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "depot:output",
+                    format!("[DAWN] Download failed for {}: {}\r\n", cand.name, e),
+                );
+            }
+        }
+    }
+
+    let (zip_asset, bytes) = downloaded.ok_or_else(|| {
+        format!("Failed to download player .zip for Dawn {}", tag)
+    })?;
+
+    tokio::fs::create_dir_all(&target_dir)
+        .await
+        .map_err(|e| format!("Failed to create directory {:?}: {}", target_dir, e))?;
+
+    let mut expected_sha: Option<String> = None;
+    if let Some(sha_asset) = release.assets.iter().find(|a| {
+        let n = a.name.to_lowercase();
+        n.ends_with(".sha256") || n.contains("sha256") || n.contains("checksum")
+    }) {
+        if let Ok(resp) = client.get(&sha_asset.browser_download_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    for line in text.lines() {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            let hash = parts[0];
+                            let fname = parts[1].trim_start_matches('*');
+                            if fname == zip_asset.name || fname.ends_with(&zip_asset.name) || zip_asset.name.ends_with(fname) {
+                                expected_sha = Some(hash.to_lowercase());
+                                break;
+                            }
+                        }
+                    }
+                    if expected_sha.is_none() {
+                        expected_sha = text.split_whitespace().next().map(|s| s.to_lowercase());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(expected) = expected_sha {
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let actual = format!("{:x}", hasher.finalize());
+        if actual.to_lowercase() != expected.to_lowercase() {
+            return Err(format!(
+                "Checksum verification failed for {}: expected {}, got {}",
+                zip_asset.name, expected, actual
+            ));
+        }
+        let _ = app.emit("depot:output", "[DAWN] SHA-256 verified successfully.\r\n");
+    }
+
+    let zip_path = target_dir.join(&zip_asset.name);
+    tokio::fs::write(&zip_path, &bytes)
+        .await
+        .map_err(|e| format!("Failed to write zip: {}", e))?;
+
+    let _ = app.emit("depot:output", "[DAWN] Extracting release files...\r\n");
+    let _ = app.emit(
+        "installer:progress",
+        ProgressPayload {
+            percent: 98,
+            status: format!("Extracting Dawn {}...", tag),
+        },
+    );
+
+    #[cfg(windows)]
+    let extracted = {
+        use std::os::windows::process::CommandExt;
+        let mut tar_cmd = Command::new("tar");
+        tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
+        tar_cmd.creation_flags(0x08000000);
+        match tar_cmd.output() {
+            Ok(out) if out.status.success() => true,
+            _ => {
+                let ps_script = format!(
+                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+                    zip_path.to_str().unwrap(),
+                    target_dir.to_str().unwrap()
+                );
+                let mut ps_cmd = Command::new("powershell");
+                ps_cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script]);
+                ps_cmd.creation_flags(0x08000000);
+                matches!(ps_cmd.output(), Ok(out) if out.status.success())
+            }
+        }
+    };
+
+    #[cfg(not(windows))]
+    let extracted = {
+        let mut unzip_cmd = Command::new("unzip");
+        unzip_cmd.args(["-o", zip_path.to_str().unwrap(), "-d", target_dir.to_str().unwrap()]);
+        if matches!(unzip_cmd.output(), Ok(ref out) if out.status.success()) {
+            true
+        } else {
+            let py_script = format!(
+                "import zipfile; zipfile.ZipFile('{}').extractall('{}')",
+                zip_path.to_str().unwrap(),
+                target_dir.to_str().unwrap()
+            );
+            let mut py_cmd = Command::new("python3");
+            py_cmd.args(["-c", &py_script]);
+            if matches!(py_cmd.output(), Ok(ref out) if out.status.success()) {
+                true
+            } else {
+                let mut tar_cmd = Command::new("tar");
+                tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
+                matches!(tar_cmd.output(), Ok(ref out) if out.status.success())
+            }
+        }
+    };
+
+    let _ = tokio::fs::remove_file(&zip_path).await;
+
+    // Ensure target_dir has release.json recording tag_name and installed_tag
+    let rel_path = target_dir.join("release.json");
+    if !rel_path.exists() {
+        let minimal = serde_json::json!({
+            "schema": 1,
+            "release": tag,
+            "tag_name": tag,
+            "installed_tag": tag,
+            "gameBuild": 86657,
+            "runtimeDirectory": "Dawn"
+        });
+        let _ = fs::write(&rel_path, serde_json::to_string_pretty(&minimal).unwrap_or_default());
+    } else if let Ok(content) = fs::read_to_string(&rel_path) {
+        let mut rel_val = serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if let Some(obj) = rel_val.as_object_mut() {
+            obj.insert("tag_name".to_string(), serde_json::json!(tag));
+            obj.insert("installed_tag".to_string(), serde_json::json!(tag));
+        }
+        let _ = fs::write(&rel_path, serde_json::to_string_pretty(&rel_val).unwrap_or_default());
+    }
+
+    if !extracted || !is_valid_release_dir(&target_dir) {
+        return Err(format!(
+            "Failed to extract or validate release archive at {:?}",
+            target_dir
+        ));
+    }
+
+    let _ = app.emit(
+        "depot:output",
+        format!("[DAWN] Successfully downloaded and prepared Dawn {}\r\n", tag),
+    );
+    Ok(target_dir)
+}
+
 pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, String> {
     let _ = app.emit(
         "depot:output",
@@ -224,253 +528,50 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
         },
     );
 
-    match fetch_latest_release().await {
-        Ok(release) => {
-            let tag = release.tag_name.clone();
-            let _ = app.emit(
-                "depot:output",
-                format!("[DAWN] Found latest release: {} on GitHub\r\n", tag),
-            );
+    let download_error = match fetch_latest_release().await {
+        Ok(release) => match download_and_extract_release(app, &release).await {
+            Ok(dir) => return Ok(dir),
+            Err(err) => Some(err),
+        },
+        Err(err) => Some(err),
+    };
 
-            let zip_asset = release
-                .assets
-                .iter()
-                .find(|a| {
-                    let n = a.name.to_lowercase();
-                    n.ends_with(".zip") && !n.ends_with(".zip.sha256") && !n.contains("source")
-                })
-                .cloned()
-                .ok_or_else(|| format!("Release {} does not contain a player .zip asset", tag))?;
-
-            let sha_asset = release
-                .assets
-                .iter()
-                .find(|a| {
-                    let n = a.name.to_lowercase();
-                    n.ends_with(".sha256") || n.contains("sha256") || n.contains("checksum")
-                })
-                .cloned();
-
-            let releases_dir = get_releases_dir();
-            let target_dir = releases_dir.join(&tag);
-
-            if is_valid_release_dir(&target_dir) {
-                let _ = app.emit(
-                    "depot:output",
-                    format!("[DAWN] Latest release {} is already cached and verified.\r\n", tag),
-                );
-                return Ok(target_dir);
-            }
-
-            let mb = (zip_asset.size as f64) / (1024.0 * 1024.0);
-            let size_desc = if mb > 0.1 { format!(" ({:.2} MB)", mb) } else { String::new() };
-            let _ = app.emit(
-                "depot:output",
-                format!("[DAWN] Downloading {}{}...\r\n", zip_asset.name, size_desc),
-            );
-            let _ = app.emit(
-                "installer:progress",
-                ProgressPayload {
-                    percent: 96,
-                    status: format!("Downloading Dawn {}{}...", tag, size_desc),
-                },
-            );
-
-            tokio::fs::create_dir_all(&target_dir)
-                .await
-                .map_err(|e| format!("Failed to create directory {:?}: {}", target_dir, e))?;
-
-            let expected_sha = if let Some(sha) = sha_asset {
-                let client = reqwest::Client::builder()
-                    .user_agent("DawnLauncher/1.0")
-                    .build()
-                    .unwrap_or_default();
-                if let Ok(resp) = client.get(&sha.browser_download_url).send().await {
-                    if resp.status().is_success() {
-                        if let Ok(text) = resp.text().await {
-                            let mut found = None;
-                            for line in text.lines() {
-                                let parts: Vec<&str> = line.split_whitespace().collect();
-                                if parts.len() >= 2 {
-                                    let hash = parts[0];
-                                    let fname = parts[1].trim_start_matches('*');
-                                    if fname == zip_asset.name {
-                                        found = Some(hash.to_lowercase());
-                                        break;
-                                    }
-                                }
-                            }
-                            found.or_else(|| text.split_whitespace().next().map(|s| s.to_lowercase()))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            let client = reqwest::Client::builder()
-                .user_agent("DawnLauncher/1.0")
-                .build()
-                .map_err(|e| format!("Failed to build client: {}", e))?;
-
-            let response = client
-                .get(&zip_asset.browser_download_url)
-                .send()
-                .await
-                .map_err(|e| format!("Failed to download {}: {}", zip_asset.name, e))?;
-
-            if !response.status().is_success() {
-                return Err(format!("Download failed with HTTP {}", response.status()));
-            }
-
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|e| format!("Failed to read stream: {}", e))?;
-
-            if let Some(expected) = expected_sha {
-                let mut hasher = Sha256::new();
-                hasher.update(&bytes);
-                let actual = format!("{:x}", hasher.finalize());
-                if actual.to_lowercase() != expected.to_lowercase() {
-                    return Err(format!(
-                        "Checksum verification failed for {}: expected {}, got {}",
-                        zip_asset.name, expected, actual
-                    ));
-                }
-                let _ = app.emit("depot:output", "[DAWN] SHA-256 verified successfully.\r\n");
-            }
-
-            let zip_path = target_dir.join(&zip_asset.name);
-            tokio::fs::write(&zip_path, &bytes)
-                .await
-                .map_err(|e| format!("Failed to write zip: {}", e))?;
-
-            let _ = app.emit("depot:output", "[DAWN] Extracting release files...\r\n");
-            let _ = app.emit(
-                "installer:progress",
-                ProgressPayload {
-                    percent: 98,
-                    status: format!("Extracting Dawn {}...", tag),
-                },
-            );
-
-            #[cfg(windows)]
-            let extracted = {
-                use std::os::windows::process::CommandExt;
-                let mut tar_cmd = Command::new("tar");
-                tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
-                tar_cmd.creation_flags(0x08000000);
-                match tar_cmd.output() {
-                    Ok(out) if out.status.success() => true,
-                    _ => {
-                        let ps_script = format!(
-                            "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                            zip_path.to_str().unwrap(),
-                            target_dir.to_str().unwrap()
-                        );
-                        let mut ps_cmd = Command::new("powershell");
-                        ps_cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_script]);
-                        ps_cmd.creation_flags(0x08000000);
-                        matches!(ps_cmd.output(), Ok(out) if out.status.success())
-                    }
-                }
-            };
-
-            #[cfg(not(windows))]
-            let extracted = {
-                let mut unzip_cmd = Command::new("unzip");
-                unzip_cmd.args(["-o", zip_path.to_str().unwrap(), "-d", target_dir.to_str().unwrap()]);
-                if matches!(unzip_cmd.output(), Ok(ref out) if out.status.success()) {
-                    true
-                } else {
-                    // Python 3 fallback (present on NixOS and virtually all Linux distributions)
-                    let py_script = format!(
-                        "import zipfile; zipfile.ZipFile('{}').extractall('{}')",
-                        zip_path.to_str().unwrap(),
-                        target_dir.to_str().unwrap()
-                    );
-                    let mut py_cmd = Command::new("python3");
-                    py_cmd.args(["-c", &py_script]);
-                    if matches!(py_cmd.output(), Ok(ref out) if out.status.success()) {
-                        true
-                    } else {
-                        // Tar fallback (works if bsdtar is installed)
-                        let mut tar_cmd = Command::new("tar");
-                        tar_cmd.args(["-xf", zip_path.to_str().unwrap(), "-C", target_dir.to_str().unwrap()]);
-                        matches!(tar_cmd.output(), Ok(ref out) if out.status.success())
-                    }
-                }
-            };
-
-            let _ = tokio::fs::remove_file(&zip_path).await;
-
-            // Ensure target_dir has release.json recording tag_name and installed_tag
-            let rel_path = target_dir.join("release.json");
-            if !rel_path.exists() {
-                let minimal = serde_json::json!({
-                    "schema": 1,
-                    "release": tag,
-                    "tag_name": tag,
-                    "installed_tag": tag,
-                    "gameBuild": 86657,
-                    "runtimeDirectory": "Dawn"
-                });
-                let _ = fs::write(&rel_path, serde_json::to_string_pretty(&minimal).unwrap_or_default());
-            } else if let Ok(content) = fs::read_to_string(&rel_path) {
-                let mut rel_val = serde_json::from_str::<serde_json::Value>(&content)
-                    .unwrap_or_else(|_| serde_json::json!({}));
-                if let Some(obj) = rel_val.as_object_mut() {
-                    obj.insert("tag_name".to_string(), serde_json::json!(tag));
-                    obj.insert("installed_tag".to_string(), serde_json::json!(tag));
-                }
-                let _ = fs::write(&rel_path, serde_json::to_string_pretty(&rel_val).unwrap_or_default());
-            }
-
-            if !extracted || !is_valid_release_dir(&target_dir) {
-                return Err(format!(
-                    "Failed to extract or validate release archive at {:?}",
-                    target_dir
-                ));
-            }
-
-            let _ = app.emit(
-                "depot:output",
-                format!("[DAWN] Successfully downloaded and prepared Dawn {}\r\n", tag),
-            );
-            Ok(target_dir)
-        }
-        Err(err) => {
-            let _ = app.emit(
-                "depot:output",
-                format!(
-                    "[WARN] GitHub release check failed ({}); checking local cache...\r\n",
-                    err
-                ),
-            );
-
-            if let Some(cached) = get_latest_cached_release_dir() {
-                let _ = app.emit(
-                    "depot:output",
-                    format!("[DAWN] Using cached release at {:?}\r\n", cached),
-                );
-                return Ok(cached);
-            }
-
-            let bundled = crate::installer::get_bundled_payload_dir();
-            let _ = app.emit(
-                "depot:output",
-                format!("[DAWN] Using bundled release at {:?}\r\n", bundled),
-            );
-            Ok(bundled)
-        }
+    if let Some(ref err) = download_error {
+        let _ = app.emit(
+            "depot:output",
+            format!(
+                "[WARN] Remote Dawn release retrieval failed ({}); checking local cache...\r\n",
+                err
+            ),
+        );
+        crate::logger::log_msg(
+            "WARN",
+            &format!("Remote Dawn release retrieval failed: {}", err),
+            Some(app),
+        );
     }
+
+    if let Some(cached) = get_latest_cached_release_dir() {
+        let _ = app.emit(
+            "depot:output",
+            format!("[DAWN] Using cached release at {:?}\r\n", cached),
+        );
+        return Ok(cached);
+    }
+
+    let bundled = crate::installer::get_bundled_payload_dir();
+    if is_valid_release_dir(&bundled) {
+        let _ = app.emit(
+            "depot:output",
+            format!("[DAWN] Using bundled release at {:?}\r\n", bundled),
+        );
+        return Ok(bundled);
+    }
+
+    Err(format!(
+        "Failed to download Dawn online ({}) and no local cache or bundled release is available.",
+        download_error.unwrap_or_else(|| "Unknown error".to_string())
+    ))
 }
 
 pub async fn deploy_dawn_to_game(
@@ -551,9 +652,15 @@ pub async fn deploy_dawn_to_game(
         let _ = fs::copy(&steam_dll, &bin_steam_dll);
     }
 
-    // Ensure steam_appid.txt is present in game root to prevent Steam redirecting to live retail D2
-    let appid_path = target.join("steam_appid.txt");
-    let _ = fs::write(&appid_path, "1085660\r\n");
+    // Purge steam_appid.txt from root and bin/x64 (triggers 'Problem reading game content' in Destiny 2)
+    let appid_root = target.join("steam_appid.txt");
+    if appid_root.exists() {
+        let _ = fs::remove_file(&appid_root);
+    }
+    let appid_bin = target.join("bin").join("x64").join("steam_appid.txt");
+    if appid_bin.exists() {
+        let _ = fs::remove_file(&appid_bin);
+    }
 
     // 6. Copy release metadata and record installed tag
     let dawn_meta = target.join(".dawn");
