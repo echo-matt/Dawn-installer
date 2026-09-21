@@ -400,8 +400,14 @@ pub fn validate_preflight(target_path: String) -> PreflightResult {
         None
     };
 
-    let has_dawn = (p.join("Dawn").is_dir() || p.join("bin").join("x64").join("Dawn").is_dir())
-        && (p.join("steam_api64.dll").is_file() || p.join("bin").join("x64").join("steam_api64.dll").is_file());
+    if has_game {
+        // Silently migrate legacy root Dawn directory & proxy DLL to bin/x64 on startup/selection
+        let _ = crate::dawn_release::migrate_legacy_root_dawn(&p, None);
+    }
+
+    let has_dawn = (p.join("bin").join("x64").join("Dawn").is_dir()
+        && p.join("bin").join("x64").join("steam_api64.dll").is_file())
+        || (p.join("Dawn").is_dir() && (p.join("steam_api64.dll").is_file() || p.join("bin").join("x64").join("steam_api64.dll").is_file()));
 
     let mut dawn_version = None;
     let rel_meta = p.join(".dawn").join("release.json");
@@ -653,16 +659,37 @@ pub async fn install_bundled_dawn(app: &AppHandle, game_root: &str) {
     let _ = app.emit("depot:output", format!("Deploying mod files from {:?}...\r\n", payload));
 
     if payload.exists() {
-        if let Err(e) = copy_dir_all(&payload, target) {
-            let _ = app.emit("depot:output", format!("[WARN] Copy error: {}\r\n", e));
-        }
+        let _ = crate::dawn_release::migrate_legacy_root_dawn(target, Some(app));
+
+        let bin_x64 = target.join("bin").join("x64");
+        let _ = fs::create_dir_all(&bin_x64);
 
         let dawn_sub = payload.join("Dawn");
-        let bin_dawn = target.join("bin").join("x64").join("Dawn");
+        let bin_dawn = bin_x64.join("Dawn");
         if dawn_sub.exists() {
-            let _ = copy_dir_all(&dawn_sub, &bin_dawn);
+            if bin_dawn.exists() {
+                let _ = crate::dawn_release::deploy_preserving_user_settings(&dawn_sub, &bin_dawn);
+            } else {
+                let _ = copy_dir_all(&dawn_sub, &bin_dawn);
+            }
         }
-        let _ = app.emit("depot:output", "Dawn payload deployment finished!\r\n");
+
+        let steam_dll = payload.join("steam_api64.dll");
+        let bin_steam_dll = bin_x64.join("steam_api64.dll");
+        if steam_dll.exists() {
+            let _ = fs::copy(&steam_dll, &bin_steam_dll);
+        }
+
+        let root_dawn = target.join("Dawn");
+        if root_dawn.exists() {
+            let _ = fs::remove_dir_all(&root_dawn);
+        }
+        let root_steam_dll = target.join("steam_api64.dll");
+        if root_steam_dll.exists() && !is_genuine_steam_dll(&root_steam_dll) {
+            let _ = fs::remove_file(&root_steam_dll);
+        }
+
+        let _ = app.emit("depot:output", "Dawn payload deployment to bin/x64 finished!\r\n");
     }
 }
 
@@ -999,8 +1026,8 @@ pub fn clear_cache(game_root: String) -> CommandResult {
 
 pub fn update_dawn_language(install_root: &str, language_code: &str) {
     let candidate_dirs = [
-        PathBuf::from(install_root).join("Dawn"),
         PathBuf::from(install_root).join("bin").join("x64").join("Dawn"),
+        PathBuf::from(install_root).join("Dawn"),
         PathBuf::from(install_root).join("Restoration"),
     ];
 
@@ -1329,21 +1356,13 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
         };
     }
 
-    // Ensure steam_api64.dll exists in BOTH root and bin/x64
-    let root_dll = p.join("steam_api64.dll");
+    // Silently migrate legacy root Dawn directory & proxy DLL to bin/x64 if still present
+    let _ = crate::dawn_release::migrate_legacy_root_dawn(&p, Some(&app));
+
+    // Ensure Dawn mod proxy steam_api64.dll exists in bin/x64
     let bin_dll = p.join("bin").join("x64").join("steam_api64.dll");
-
-    if !root_dll.exists() && bin_dll.exists() {
-        let _ = fs::copy(&bin_dll, &root_dll);
-    } else if !bin_dll.exists() && root_dll.exists() {
-        if let Some(parent) = bin_dll.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let _ = fs::copy(&root_dll, &bin_dll);
-    }
-
-    if !root_dll.exists() && !bin_dll.exists() {
-        let msg = "Dawn mod proxy (steam_api64.dll) was not found in the game folder. Windows Defender or your antivirus may have quarantined it, or Dawn was not installed. Please reinstall Dawn Mod or Verify Files, and check your antivirus protection history.".to_string();
+    if !bin_dll.exists() {
+        let msg = "Dawn mod proxy (steam_api64.dll) was not found in bin/x64. Windows Defender or your antivirus may have quarantined it, or Dawn was not installed. Please reinstall Dawn Mod or Verify Files, and check your antivirus protection history.".to_string();
         let _ = app.emit("depot:output", format!("[LAUNCH ERROR] {}\r\n", msg));
         crate::logger::log_msg("ERROR", &msg, Some(&app));
         return CommandResult {
@@ -1353,6 +1372,13 @@ pub fn launch_game(app: AppHandle, game_root: String, language_code: Option<Stri
             cancelled: Some(false),
             count: None,
         };
+    }
+
+    // Ensure root steam_api64.dll proxy is purged so destiny2.exe does not conflict with bin/x64
+    let root_dll = p.join("steam_api64.dll");
+    if root_dll.exists() && !is_genuine_steam_dll(&root_dll) {
+        let _ = fs::remove_file(&root_dll);
+        crate::logger::log_msg("INFO", "Cleaned up legacy steam_api64.dll proxy from game root", Some(&app));
     }
 
     // Ensure steam_appid.txt is purged: Destiny 2 anti-tamper specifically detects steam_appid.txt

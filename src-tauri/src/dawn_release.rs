@@ -574,6 +574,142 @@ pub async fn ensure_latest_dawn_release(app: &AppHandle) -> Result<PathBuf, Stri
     ))
 }
 
+pub fn merge_directories_preserving_user_data(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to).map_err(|e| format!("Failed to create directory {:?}: {}", to, e))?;
+
+    for entry in fs::read_dir(from).map_err(|e| format!("Failed to read directory {:?}: {}", from, e))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let from_path = entry.path();
+        let to_path = to.join(entry.file_name());
+
+        if from_path.is_dir() {
+            merge_directories_preserving_user_data(&from_path, &to_path)?;
+        } else if from_path.is_file() {
+            if !to_path.exists() {
+                let _ = fs::copy(&from_path, &to_path);
+            } else {
+                let overwrite = match (fs::metadata(&from_path), fs::metadata(&to_path)) {
+                    (Ok(meta_from), Ok(meta_to)) => {
+                        let from_modified = meta_from.modified().ok();
+                        let to_modified = meta_to.modified().ok();
+                        if let (Some(from_time), Some(to_time)) = (from_modified, to_modified) {
+                            from_time >= to_time || meta_from.len() != meta_to.len()
+                        } else {
+                            true
+                        }
+                    }
+                    _ => true,
+                };
+                if overwrite {
+                    let _ = fs::copy(&from_path, &to_path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn deploy_preserving_user_settings(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to).map_err(|e| format!("Failed to create directory {:?}: {}", to, e))?;
+
+    for entry in fs::read_dir(from).map_err(|e| format!("Failed to read directory {:?}: {}", from, e))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let from_path = entry.path();
+        let to_path = to.join(entry.file_name());
+
+        if from_path.is_dir() {
+            deploy_preserving_user_settings(&from_path, &to_path)?;
+        } else if from_path.is_file() {
+            let fname = entry.file_name();
+            let fname_str = fname.to_string_lossy();
+            let is_user_progress = fname_str == "settings.json"
+                || fname_str == "player.json"
+                || fname_str == "hud.json"
+                || fname_str == "movement.json"
+                || fname_str.ends_with(".db")
+                || fname_str.ends_with(".sqlite");
+
+            if is_user_progress && to_path.exists() {
+                continue;
+            }
+
+            let _ = fs::copy(&from_path, &to_path);
+        }
+    }
+    Ok(())
+}
+
+pub fn migrate_legacy_root_dawn(target: &Path, app: Option<&AppHandle>) -> Result<bool, String> {
+    let root_dawn = target.join("Dawn");
+    let root_steam_dll = target.join("steam_api64.dll");
+
+    if !root_dawn.is_dir() && !root_steam_dll.is_file() {
+        return Ok(false);
+    }
+
+    let bin_x64 = target.join("bin").join("x64");
+    let bin_dawn = bin_x64.join("Dawn");
+    let bin_steam_dll = bin_x64.join("steam_api64.dll");
+
+    // 1. If root Dawn directory exists, backup and merge
+    if root_dawn.is_dir() {
+        if let Some(a) = app {
+            let _ = a.emit(
+                "depot:output",
+                "[MIGRATE] Migrating legacy root Dawn directory to bin/x64/Dawn...\r\n",
+            );
+        }
+        crate::logger::log_msg(
+            "INFO",
+            &format!("Migrating legacy root Dawn at {:?} to {:?}", root_dawn, bin_dawn),
+            app,
+        );
+
+        // A. Safety backup to .dawn/root_migration_backup
+        let backup_dir = target.join(".dawn").join("root_migration_backup");
+        let _ = fs::create_dir_all(&backup_dir);
+        let _ = crate::installer::copy_dir_all(&root_dawn, &backup_dir);
+
+        // B. Ensure bin/x64/Dawn exists
+        let _ = fs::create_dir_all(&bin_dawn);
+
+        // C. Recursively merge all contents and subdirectories of root_dawn into bin_dawn
+        merge_directories_preserving_user_data(&root_dawn, &bin_dawn)?;
+
+        // D. Remove root Dawn folder
+        let _ = fs::remove_dir_all(&root_dawn);
+        if let Some(a) = app {
+            let _ = a.emit(
+                "depot:output",
+                "[MIGRATE] Root Dawn directory successfully migrated to bin/x64/Dawn and cleaned up.\r\n",
+            );
+        }
+    }
+
+    // 2. If root steam_api64.dll exists, ensure bin/x64/steam_api64.dll exists, then clean up root
+    if root_steam_dll.is_file() {
+        if !bin_steam_dll.is_file() {
+            let _ = fs::create_dir_all(&bin_x64);
+            let _ = fs::copy(&root_steam_dll, &bin_steam_dll);
+            crate::logger::log_msg("INFO", "Moved root steam_api64.dll to bin/x64/steam_api64.dll", app);
+        }
+
+        // If the root DLL is the mod proxy (not genuine Steam DLL), remove it so only bin/x64 is used
+        if !crate::installer::is_genuine_steam_dll(&root_steam_dll) {
+            let _ = fs::remove_file(&root_steam_dll);
+            crate::logger::log_msg("INFO", "Removed legacy steam_api64.dll proxy from game root", app);
+        }
+    }
+
+    Ok(true)
+}
+
 pub async fn deploy_dawn_to_game(
     app: &AppHandle,
     release_dir: &Path,
@@ -592,12 +728,15 @@ pub async fn deploy_dawn_to_game(
         return Err("Destiny 2 is currently running. Please close the game before installing or updating Dawn.".to_string());
     }
 
+    // 2. Perform silent migration of legacy root files if present
+    let _ = migrate_legacy_root_dawn(target, Some(app));
+
     let _ = app.emit(
         "depot:output",
-        format!("[DAWN] Deploying Dawn files to game directory {:?}...\r\n", target),
+        format!("[DAWN] Deploying Dawn files to bin/x64 in {:?}...\r\n", target),
     );
 
-    // 2. Backup original steam_api64.dll to .dawn/backup/ if not already backed up
+    // 3. Backup original steam_api64.dll to .dawn/backup/ if not already backed up
     let backup_dir = target.join(".dawn").join("backup");
     let _ = fs::create_dir_all(&backup_dir);
     let backup_dll = backup_dir.join("steam_api64.dll");
@@ -608,7 +747,7 @@ pub async fn deploy_dawn_to_game(
             target.join("steam_api64.dll"),
         ];
         for orig in &original_candidates {
-            if orig.is_file() {
+            if orig.is_file() && crate::installer::is_genuine_steam_dll(orig) {
                 if fs::copy(orig, &backup_dll).is_ok() {
                     let _ = app.emit("depot:output", "[DAWN] Successfully backed up original steam_api64.dll\r\n");
                     break;
@@ -617,7 +756,7 @@ pub async fn deploy_dawn_to_game(
         }
     }
 
-    // 3. Resolve payload directory
+    // 4. Resolve payload directory
     let payload = if release_dir.join("payload").exists() {
         release_dir.join("payload")
     } else {
@@ -628,28 +767,36 @@ pub async fn deploy_dawn_to_game(
         return Err(format!("Payload folder not found at {:?}", payload));
     }
 
-    // 4. Copy payload contents to game root
-    let _ = app.emit("depot:output", "[DAWN] Copying mod payload files...\r\n");
-    if let Err(e) = crate::installer::copy_dir_all(&payload, target) {
-        let _ = app.emit("depot:output", format!("[WARN] Copy notification: {}\r\n", e));
-    }
+    let bin_x64 = target.join("bin").join("x64");
+    let _ = fs::create_dir_all(&bin_x64);
 
-    // 5. Ensure Dawn directory and steam_api64.dll are in bin/x64
+    // 5. Deploy Dawn mod directory ONLY to bin/x64/Dawn, preserving user settings if existing
     let dawn_sub = payload.join("Dawn");
-    let bin_dawn = target.join("bin").join("x64").join("Dawn");
+    let bin_dawn = bin_x64.join("Dawn");
     if dawn_sub.exists() {
-        let _ = crate::installer::copy_dir_all(&dawn_sub, &bin_dawn);
+        let _ = app.emit("depot:output", "[DAWN] Deploying Dawn files to bin/x64/Dawn...\r\n");
+        if bin_dawn.exists() {
+            deploy_preserving_user_settings(&dawn_sub, &bin_dawn)?;
+        } else {
+            let _ = crate::installer::copy_dir_all(&dawn_sub, &bin_dawn);
+        }
     }
 
+    // 6. Deploy steam_api64.dll ONLY to bin/x64/steam_api64.dll
     let steam_dll = payload.join("steam_api64.dll");
-    let root_steam_dll = target.join("steam_api64.dll");
-    let bin_steam_dll = target.join("bin").join("x64").join("steam_api64.dll");
+    let bin_steam_dll = bin_x64.join("steam_api64.dll");
     if steam_dll.exists() {
-        let _ = fs::copy(&steam_dll, &root_steam_dll);
-        if let Some(parent) = bin_steam_dll.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
         let _ = fs::copy(&steam_dll, &bin_steam_dll);
+    }
+
+    // Ensure root directory has no lingering Dawn folder or proxy steam_api64.dll
+    let root_dawn = target.join("Dawn");
+    if root_dawn.exists() {
+        let _ = fs::remove_dir_all(&root_dawn);
+    }
+    let root_steam_dll = target.join("steam_api64.dll");
+    if root_steam_dll.exists() && !crate::installer::is_genuine_steam_dll(&root_steam_dll) {
+        let _ = fs::remove_file(&root_steam_dll);
     }
 
     // Purge steam_appid.txt from root and bin/x64 (triggers 'Problem reading game content' in Destiny 2)
@@ -657,12 +804,12 @@ pub async fn deploy_dawn_to_game(
     if appid_root.exists() {
         let _ = fs::remove_file(&appid_root);
     }
-    let appid_bin = target.join("bin").join("x64").join("steam_appid.txt");
+    let appid_bin = bin_x64.join("steam_appid.txt");
     if appid_bin.exists() {
         let _ = fs::remove_file(&appid_bin);
     }
 
-    // 6. Copy release metadata and record installed tag
+    // 7. Copy release metadata and record installed tag
     let dawn_meta = target.join(".dawn");
     let _ = fs::create_dir_all(&dawn_meta);
     let rel_json = release_dir.join("release.json");
@@ -683,6 +830,7 @@ pub async fn deploy_dawn_to_game(
     }
     let formatted = serde_json::to_string_pretty(&rel_val).unwrap_or_default();
     let _ = fs::write(dawn_meta.join("release.json"), &formatted);
+    let _ = fs::write(bin_x64.join("release.json"), &formatted);
     let _ = fs::write(target.join("release.json"), &formatted);
 
     crate::installer::ensure_launch_scripts(target);
@@ -741,4 +889,102 @@ pub async fn get_latest_dawn_version() -> Option<String> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deploy_preserving_user_settings() {
+        let temp_dir = std::env::temp_dir().join(format!("dawn_test_preserve_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let from_dir = temp_dir.join("release_payload");
+        let to_dir = temp_dir.join("game_dawn");
+
+        let _ = fs::create_dir_all(&from_dir);
+        let _ = fs::create_dir_all(&to_dir);
+
+        // User already has custom settings.json
+        fs::write(to_dir.join("settings.json"), b"{\"user_setting\": 123}").unwrap();
+        // Release payload has default settings.json and a new script
+        fs::write(from_dir.join("settings.json"), b"{\"default_setting\": 0}").unwrap();
+        let _ = fs::create_dir_all(from_dir.join("scripts"));
+        fs::write(from_dir.join("scripts").join("new_script.lua"), b"-- new script").unwrap();
+
+        let res = deploy_preserving_user_settings(&from_dir, &to_dir);
+        assert!(res.is_ok());
+
+        // Settings should be preserved
+        let settings_content = fs::read_to_string(to_dir.join("settings.json")).unwrap();
+        assert_eq!(settings_content, "{\"user_setting\": 123}");
+
+        // New script should be deployed
+        assert!(to_dir.join("scripts").join("new_script.lua").is_file());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_migrate_legacy_root_dawn() {
+        let temp_dir = std::env::temp_dir().join(format!("dawn_test_migrate_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // Dummy destiny2.exe in root
+        fs::write(temp_dir.join("destiny2.exe"), b"dummy exe").unwrap();
+
+        // Dummy legacy root Dawn with user files and nested folders
+        let root_dawn = temp_dir.join("Dawn");
+        let _ = fs::create_dir_all(root_dawn.join("scripts"));
+        let _ = fs::create_dir_all(root_dawn.join("custom").join("subfolder"));
+        fs::write(root_dawn.join("settings.json"), b"{\"user_progress\": 999}").unwrap();
+        fs::write(root_dawn.join("player.json"), b"{\"character\": \"hunter\"}").unwrap();
+        fs::write(root_dawn.join("scripts").join("my_macro.lua"), b"-- user macro").unwrap();
+        fs::write(root_dawn.join("custom").join("subfolder").join("data.txt"), b"saved data").unwrap();
+
+        // Legacy proxy DLL in root
+        fs::write(temp_dir.join("steam_api64.dll"), b"dummy proxy dll").unwrap();
+
+        // Execute migration
+        let res = migrate_legacy_root_dawn(&temp_dir, None);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), true);
+
+        // 1. Root Dawn directory should be removed
+        assert!(!temp_dir.join("Dawn").exists(), "Root Dawn folder must be removed");
+
+        // 2. Root proxy steam_api64.dll should be removed
+        assert!(!temp_dir.join("steam_api64.dll").exists(), "Root steam_api64.dll proxy must be removed");
+
+        // 3. Files must now be in bin/x64/Dawn
+        let bin_dawn = temp_dir.join("bin").join("x64").join("Dawn");
+        assert!(bin_dawn.is_dir(), "bin/x64/Dawn must exist");
+        assert_eq!(
+            fs::read_to_string(bin_dawn.join("settings.json")).unwrap(),
+            "{\"user_progress\": 999}"
+        );
+        assert_eq!(
+            fs::read_to_string(bin_dawn.join("player.json")).unwrap(),
+            "{\"character\": \"hunter\"}"
+        );
+        assert_eq!(
+            fs::read_to_string(bin_dawn.join("scripts").join("my_macro.lua")).unwrap(),
+            "-- user macro"
+        );
+        assert_eq!(
+            fs::read_to_string(bin_dawn.join("custom").join("subfolder").join("data.txt")).unwrap(),
+            "saved data"
+        );
+
+        // 4. steam_api64.dll must be in bin/x64
+        assert!(temp_dir.join("bin").join("x64").join("steam_api64.dll").is_file());
+
+        // 5. Backup in .dawn/root_migration_backup must exist
+        let backup = temp_dir.join(".dawn").join("root_migration_backup");
+        assert!(backup.join("settings.json").is_file());
+        assert!(backup.join("scripts").join("my_macro.lua").is_file());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
