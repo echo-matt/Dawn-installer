@@ -4,6 +4,7 @@
 
   let {
     appVersion: propVersion = null,
+    dawnVersion = null,
     onOpenDebugLogs = () => {}
   } = $props();
 
@@ -22,7 +23,7 @@
   let activeVersion = $derived(propVersion || fetchedVersion || staticVersion);
   let displayTitle = $derived(
     activeVersion
-      ? `Dawn Installer v${activeVersion.replace(/^v/, '')}`
+      ? `Dawn Installer v${activeVersion.replace(/^v/, '')}${dawnVersion ? ` · Dawn v${dawnVersion.replace(/^v/i, '')}` : ''}`
       : 'Dawn Installer'
   );
 
