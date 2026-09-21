@@ -713,7 +713,7 @@
   <!-- UI Overlay Layer -->
   <div class="ui-layer">
     <!-- Title Bar -->
-    <TitleBar onOpenDebugLogs={() => (isDebugConsoleOpen = true)} />
+    <TitleBar dawnVersion={latestDawnVersion} onOpenDebugLogs={() => (isDebugConsoleOpen = true)} />
 
     <!-- Center Hero Logo -->
     <EmblemHero />
